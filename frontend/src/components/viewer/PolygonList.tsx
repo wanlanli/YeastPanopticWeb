@@ -2,12 +2,18 @@ import { useState } from 'react';
 import { api } from '../../api/client';
 import type { PolygonAnnotation } from '../../api/types';
 import { useViewerStore } from '../../store/useViewerStore';
+import { classFromLabel, colorForClass } from './colorByClass';
 import './PolygonList.css';
 
 const SOURCE_COLOR: Record<PolygonAnnotation['source'], string> = {
   manual: '#3dd6a8',
   model: '#f2b84b',
 };
+
+function swatchColor(p: PolygonAnnotation): string {
+  const classId = classFromLabel(p.label);
+  return classId !== null ? colorForClass(classId) : SOURCE_COLOR[p.source];
+}
 
 function sortKey(p: PolygonAnnotation): number {
   const n = Number(p.label);
@@ -25,6 +31,9 @@ export function PolygonList() {
   const [editValue, setEditValue] = useState('');
 
   const sorted = [...polygons].sort((a, b) => sortKey(a) - sortKey(b));
+  const classes = Array.from(
+    new Set(polygons.map((p) => classFromLabel(p.label)).filter((c): c is number => c !== null)),
+  ).sort((a, b) => a - b);
 
   function handleSelect(p: PolygonAnnotation) {
     selectPolygon(p.id);
@@ -53,6 +62,16 @@ export function PolygonList() {
       <div className="polygon-list-header">
         Polygons <span className="polygon-list-count">{polygons.length}</span>
       </div>
+      {classes.length > 0 && (
+        <div className="polygon-class-legend">
+          {classes.map((c) => (
+            <span key={c} className="polygon-class-legend-item">
+              <span className="polygon-swatch" style={{ background: colorForClass(c) }} />
+              class {c}
+            </span>
+          ))}
+        </div>
+      )}
       <ul className="polygon-list-items">
         {sorted.map((p) => (
           <li
@@ -60,7 +79,7 @@ export function PolygonList() {
             className={p.id === selectedPolygonId ? 'selected' : ''}
             onClick={() => handleSelect(p)}
           >
-            <span className="polygon-swatch" style={{ background: SOURCE_COLOR[p.source] }} />
+            <span className="polygon-swatch" style={{ background: swatchColor(p) }} />
             {editingId === p.id ? (
               <input
                 autoFocus

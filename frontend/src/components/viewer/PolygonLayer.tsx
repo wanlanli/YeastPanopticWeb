@@ -1,6 +1,7 @@
 import Konva from 'konva';
 import { Circle, Line } from 'react-konva';
 import type { PolygonAnnotation } from '../../api/types';
+import { classFromLabel, strokeAndFillForClass } from './colorByClass';
 
 interface Props {
   polygon: PolygonAnnotation;
@@ -45,7 +46,10 @@ export function PolygonLayer({
   onChangePoints,
   onCommitPoints,
 }: Props) {
-  const colors = isSelected ? COLORS.selected : COLORS[polygon.source] ?? COLORS.manual;
+  const classId = classFromLabel(polygon.label);
+  const baseColors =
+    classId !== null ? strokeAndFillForClass(classId) : (COLORS[polygon.source] ?? COLORS.manual);
+  const colors = isSelected ? COLORS.selected : baseColors;
   const flatPoints = polygon.points.flat();
   const handleRadius = 4 / scale;
 
