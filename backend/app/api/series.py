@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.config import SUPPORTED_IMAGE_EXTENSIONS, UPLOAD_DIR
 from app.db import get_db
+from app.models.polygon import Polygon
 from app.models.series import ImageSeries
 from app.schemas.series import SeriesOut, SeriesRegisterPath
-from app.services import image_io
+from app.services import image_io, mask_io
 
 router = APIRouter(prefix="/api/series", tags=["series"])
 
@@ -144,3 +145,52 @@ def get_frame(
 
     png_bytes = image_io.render_frame_png(arr, vmin, vmax)
     return Response(content=png_bytes, media_type="image/png")
+
+
+def _frame_polygons(db: Session, series_id: int, frame_index: int) -> list[tuple[str, list[list[float]]]]:
+    rows = (
+        db.query(Polygon)
+        .filter(Polygon.series_id == series_id, Polygon.frame_index == frame_index)
+        .order_by(Polygon.id)
+        .all()
+    )
+    return [(p.label, p.points) for p in rows]
+
+
+@router.get("/{series_id}/frame/{frame_index}/mask")
+def get_frame_mask(series_id: int, frame_index: int, db: Session = Depends(get_db)):
+    series = db.get(ImageSeries, series_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+    if frame_index < 0 or frame_index >= series.frame_count:
+        raise HTTPException(404, f"frame_index {frame_index} out of range")
+
+    polygons = _frame_polygons(db, series_id, frame_index)
+    mask = mask_io.rasterize_polygons(polygons, series.height, series.width)
+    tiff_bytes = mask_io.mask_to_tiff_bytes(mask)
+    filename = f"{series.name}_frame{frame_index}_mask.tif"
+    return Response(
+        content=tiff_bytes,
+        media_type="image/tiff",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{series_id}/mask")
+def get_series_mask(series_id: int, db: Session = Depends(get_db)):
+    series = db.get(ImageSeries, series_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+
+    frames = []
+    for frame_index in range(series.frame_count):
+        polygons = _frame_polygons(db, series_id, frame_index)
+        frames.append(mask_io.rasterize_polygons(polygons, series.height, series.width))
+
+    tiff_bytes = mask_io.mask_stack_to_tiff_bytes(frames)
+    filename = f"{series.name}_mask.tif"
+    return Response(
+        content=tiff_bytes,
+        media_type="image/tiff",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

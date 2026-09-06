@@ -55,6 +55,9 @@ export const api = {
     const qs = params.toString();
     return `/api/series/${seriesId}/frame/${frameIndex}${qs ? `?${qs}` : ''}`;
   },
+  frameMaskUrl: (seriesId: number, frameIndex: number) =>
+    `/api/series/${seriesId}/frame/${frameIndex}/mask`,
+  seriesMaskUrl: (seriesId: number) => `/api/series/${seriesId}/mask`,
 
   // Annotations
   listPolygons: (seriesId: number, frameIndex: number) =>
@@ -70,13 +73,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ points, source, label }),
     }),
-  updatePolygon: (polygonId: number, points: [number, number][]) =>
+  updatePolygon: (
+    polygonId: number,
+    updates: { points?: [number, number][]; label?: string },
+  ) =>
     request<PolygonAnnotation>(`/api/series/polygons/${polygonId}`, {
       method: 'PUT',
-      body: JSON.stringify({ points }),
+      body: JSON.stringify(updates),
     }),
   deletePolygon: (polygonId: number) =>
     request<{ ok: boolean }>(`/api/series/polygons/${polygonId}`, { method: 'DELETE' }),
+  deleteFramePolygons: (seriesId: number, frameIndex: number) =>
+    request<{ deleted: number }>(`/api/series/${seriesId}/frame/${frameIndex}/polygons`, {
+      method: 'DELETE',
+    }),
+  deleteSeriesPolygons: (seriesId: number) =>
+    request<{ deleted: number }>(`/api/series/${seriesId}/polygons`, { method: 'DELETE' }),
   predictPoint: (seriesId: number, frameIndex: number, x: number, y: number) =>
     request<{ polygons: [number, number][][] }>(
       `/api/series/${seriesId}/frame/${frameIndex}/predict-point`,

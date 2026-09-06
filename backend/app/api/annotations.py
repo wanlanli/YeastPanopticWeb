@@ -54,6 +54,24 @@ def create_polygon(
     return polygon
 
 
+@router.delete("/{series_id}/frame/{frame_index}/polygons")
+def delete_frame_polygons(series_id: int, frame_index: int, db: Session = Depends(get_db)):
+    deleted = (
+        db.query(Polygon)
+        .filter(Polygon.series_id == series_id, Polygon.frame_index == frame_index)
+        .delete()
+    )
+    db.commit()
+    return {"deleted": deleted}
+
+
+@router.delete("/{series_id}/polygons")
+def delete_series_polygons(series_id: int, db: Session = Depends(get_db)):
+    deleted = db.query(Polygon).filter(Polygon.series_id == series_id).delete()
+    db.commit()
+    return {"deleted": deleted}
+
+
 @router.put("/polygons/{polygon_id}", response_model=PolygonOut)
 def update_polygon(
     polygon_id: int, body: PolygonUpdate, db: Session = Depends(get_db)

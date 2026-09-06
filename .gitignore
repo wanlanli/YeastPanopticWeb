@@ -10,3 +10,7 @@ frontend/dist/
 
 # Editors / OS
 .DS_Store
+.claude/
+
+# Large local test fixtures (not meant for version control)
+sample_data/

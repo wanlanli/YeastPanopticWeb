@@ -5,6 +5,7 @@ import type { Series } from '../api/types';
 import { ContrastControls } from '../components/viewer/ContrastControls';
 import { FrameNavigator } from '../components/viewer/FrameNavigator';
 import { ImageCanvas } from '../components/viewer/ImageCanvas';
+import { PolygonList } from '../components/viewer/PolygonList';
 import { Toolbar } from '../components/viewer/Toolbar';
 import { useViewerStore } from '../store/useViewerStore';
 import './Viewer.css';
@@ -131,7 +132,10 @@ export function Viewer() {
       <main className="viewer-main">
         <Toolbar />
         <ContrastControls />
-        <ImageCanvas />
+        <div className="viewer-canvas-row">
+          <ImageCanvas />
+          <PolygonList />
+        </div>
         <FrameNavigator />
       </main>
     </div>

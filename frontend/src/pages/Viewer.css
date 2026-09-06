@@ -137,3 +137,9 @@
   display: flex;
   flex-direction: column;
 }
+
+.viewer-canvas-row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}

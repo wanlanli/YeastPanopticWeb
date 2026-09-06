@@ -1,0 +1,112 @@
+.polygon-list {
+  width: 220px;
+  flex-shrink: 0;
+  background: #17171c;
+  border-left: 1px solid #2a2a33;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.polygon-list-header {
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #999;
+  border-bottom: 1px solid #2a2a33;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.polygon-list-count {
+  background: #2a2a33;
+  color: #ccc;
+  border-radius: 10px;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.polygon-list-items {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.polygon-list-items li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #ddd;
+  font-size: 13px;
+}
+
+.polygon-list-items li:hover {
+  background: #1e1e24;
+}
+
+.polygon-list-items li.selected {
+  background: #3a2230;
+  color: #ff9db3;
+}
+
+.polygon-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.polygon-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.polygon-label-input {
+  flex: 1;
+  min-width: 0;
+  background: #0c0c10;
+  border: 1px solid #3d63dd;
+  color: #eee;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.polygon-delete-btn {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+
+.polygon-delete-btn:hover {
+  color: #ff6b6b;
+}
+
+.polygon-list-empty {
+  color: #666;
+  font-size: 12px;
+  padding: 12px 8px;
+  cursor: default;
+}
+
+.polygon-list-empty:hover {
+  background: none;
+}

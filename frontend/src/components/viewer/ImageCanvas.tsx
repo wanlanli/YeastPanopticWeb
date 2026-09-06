@@ -18,6 +18,7 @@ export function ImageCanvas() {
   const upsertPolygon = useViewerStore((s) => s.upsertPolygon);
   const selectedPolygonId = useViewerStore((s) => s.selectedPolygonId);
   const setSelectedPolygonId = useViewerStore((s) => s.setSelectedPolygonId);
+  const removePolygon = useViewerStore((s) => s.removePolygon);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const groupRef = useRef<Konva.Group>(null);
@@ -44,7 +45,7 @@ export function ImageCanvas() {
 
   useEffect(() => {
     if (!series || size.width === 0) return;
-    const scale = Math.min(size.width / series.width, size.height / series.height, 1) || 1;
+    const scale = Math.min(size.width / series.width, size.height / series.height) || 1;
     setTransform({
       scale,
       x: (size.width - series.width * scale) / 2,
@@ -72,6 +73,18 @@ export function ImageCanvas() {
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      const target = e.target;
+      const isTyping =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+
+      if (!isTyping && (e.key === 'Delete' || e.key === 'Backspace') && selectedPolygonId !== null) {
+        e.preventDefault();
+        api.deletePolygon(selectedPolygonId).then(() => removePolygon(selectedPolygonId));
+        return;
+      }
+
       if (tool !== 'draw') return;
       if (e.key === 'Enter') finishDraft();
       if (e.key === 'Escape') setDraftPoints([]);
@@ -79,7 +92,7 @@ export function ImageCanvas() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, draftPoints, series, frameIndex]);
+  }, [tool, draftPoints, series, frameIndex, selectedPolygonId, removePolygon]);
 
   function handleWheel(e: Konva.KonvaEventObject<WheelEvent>) {
     e.evt.preventDefault();
@@ -152,7 +165,7 @@ export function ImageCanvas() {
   }
 
   async function commitPolygon(id: number, points: [number, number][]) {
-    const updated = await api.updatePolygon(id, points);
+    const updated = await api.updatePolygon(id, { points });
     upsertPolygon(updated);
   }
 

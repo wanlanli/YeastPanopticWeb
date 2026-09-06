@@ -21,6 +21,8 @@ interface ViewerState {
   upsertPolygon: (polygon: PolygonAnnotation) => void;
   removePolygon: (id: number) => void;
   setSelectedPolygonId: (id: number | null) => void;
+  /** select a polygon and switch to the select/edit tool in one atomic update */
+  selectPolygon: (id: number) => void;
   setIsPlaying: (playing: boolean) => void;
 }
 
@@ -59,5 +61,6 @@ export const useViewerStore = create<ViewerState>((set) => ({
       selectedPolygonId: state.selectedPolygonId === id ? null : state.selectedPolygonId,
     })),
   setSelectedPolygonId: (selectedPolygonId) => set({ selectedPolygonId }),
+  selectPolygon: (id) => set({ tool: 'select', selectedPolygonId: id }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
 }));
