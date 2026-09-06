@@ -1,0 +1,104 @@
+.feature-table-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+
+.feature-table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.feature-table-toolbar input {
+  background: #1a1a19;
+  border: 1px solid #383835;
+  color: #fff;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  width: 220px;
+}
+
+.feature-table-count {
+  font-size: 12px;
+  color: #898781;
+}
+
+.feature-table-error {
+  color: #e66767;
+  font-size: 12px;
+}
+
+.feature-table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid #2c2c2a;
+  border-radius: 6px;
+}
+
+.feature-table-scroll table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.feature-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  background: #1a1a19;
+  color: #c3c2b7;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid #383835;
+  white-space: nowrap;
+}
+
+.feature-table-scroll thead th:hover {
+  color: #fff;
+}
+
+.feature-table-scroll tbody td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #2c2c2a;
+  color: #eee;
+  white-space: nowrap;
+}
+
+.feature-table-scroll tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.feature-table-empty {
+  text-align: center;
+  color: #666;
+  padding: 20px;
+}
+
+.feature-table-pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #c3c2b7;
+}
+
+.feature-table-pagination button {
+  background: #1a1a19;
+  border: 1px solid #383835;
+  color: #eee;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.feature-table-pagination button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

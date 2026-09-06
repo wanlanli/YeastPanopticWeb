@@ -1,0 +1,54 @@
+.frame-navigator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #1e1e24;
+  border-top: 1px solid #333;
+  color: #eee;
+}
+
+.frame-navigator button {
+  background: #2a2a33;
+  border: 1px solid #444;
+  color: #eee;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.frame-navigator button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.frame-navigator button:hover:not(:disabled) {
+  background: #3a3a45;
+}
+
+.play-btn {
+  min-width: 32px;
+}
+
+.frame-slider {
+  flex: 1;
+}
+
+.frame-counter {
+  font-size: 12px;
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.frame-input {
+  width: 56px;
+  background: #2a2a33;
+  border: 1px solid #444;
+  color: #eee;
+  border-radius: 4px;
+  padding: 2px 4px;
+}

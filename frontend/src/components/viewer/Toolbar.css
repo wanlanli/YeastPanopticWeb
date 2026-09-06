@@ -1,0 +1,36 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #1e1e24;
+  border-bottom: 1px solid #333;
+}
+
+.toolbar button {
+  background: #2a2a33;
+  border: 1px solid #444;
+  color: #eee;
+  border-radius: 4px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.toolbar button:hover:not(:disabled) {
+  background: #3a3a45;
+}
+
+.toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.toolbar button.active {
+  background: #3d63dd;
+  border-color: #3d63dd;
+}
+
+.toolbar-spacer {
+  flex: 1;
+}

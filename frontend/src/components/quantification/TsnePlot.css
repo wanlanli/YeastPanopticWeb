@@ -1,0 +1,95 @@
+.tsne-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+.tsne-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+  color: #c3c2b7;
+}
+
+.tsne-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tsne-controls select,
+.tsne-controls input {
+  background: #1a1a19;
+  border: 1px solid #383835;
+  color: #fff;
+  border-radius: 4px;
+  padding: 4px 6px;
+}
+
+.tsne-controls input[type='number'] {
+  width: 56px;
+}
+
+.tsne-loading {
+  color: #898781;
+}
+
+.tsne-error {
+  color: #e66767;
+}
+
+.tsne-plot-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: #1a1a19;
+  border: 1px solid #2c2c2a;
+  border-radius: 6px;
+}
+
+.tsne-tooltip {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(13, 13, 13, 0.92);
+  border: 1px solid #383835;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #fff;
+  pointer-events: none;
+}
+
+.tsne-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11px;
+  color: #c3c2b7;
+}
+
+.tsne-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tsne-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.tsne-legend-sequential {
+  align-items: center;
+}
+
+.tsne-gradient {
+  width: 120px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #cde2fb, #6da7ec, #3987e5, #184f95, #0d366b);
+}

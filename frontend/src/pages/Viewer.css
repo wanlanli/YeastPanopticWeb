@@ -1,0 +1,139 @@
+.viewer-page {
+  display: flex;
+  height: 100vh;
+  background: #0c0c10;
+  color: #eee;
+}
+
+.viewer-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: #17171c;
+  border-right: 1px solid #2a2a33;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.back-link,
+.nav-link {
+  color: #8ab4ff;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.viewer-sidebar h3,
+.viewer-sidebar h4 {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #999;
+}
+
+.series-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.series-list button {
+  width: 100%;
+  text-align: left;
+  background: #1e1e24;
+  border: 1px solid #2a2a33;
+  color: #eee;
+  border-radius: 4px;
+  padding: 8px 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.series-list button.active {
+  border-color: #3d63dd;
+  background: #22283f;
+}
+
+.series-list button:hover {
+  background: #26262e;
+}
+
+.series-meta {
+  font-size: 11px;
+  color: #999;
+}
+
+.empty-hint {
+  font-size: 12px;
+  color: #666;
+  padding: 8px 0;
+}
+
+.add-series {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  border-top: 1px solid #2a2a33;
+  padding-top: 10px;
+}
+
+.add-series input[type='text'],
+.add-series input:not([type]) {
+  background: #1e1e24;
+  border: 1px solid #333;
+  color: #eee;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.add-series-row {
+  display: flex;
+  gap: 6px;
+}
+
+.add-series-row input {
+  flex: 1;
+  min-width: 0;
+  background: #1e1e24;
+  border: 1px solid #333;
+  color: #eee;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.add-series-row button {
+  background: #3d63dd;
+  border: none;
+  color: #fff;
+  border-radius: 4px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.add-series-row button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.error-text {
+  color: #ff6b6b;
+  font-size: 12px;
+}
+
+.viewer-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}

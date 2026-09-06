@@ -1,0 +1,134 @@
+.quant-page {
+  height: 100vh;
+  background: #0d0d0d;
+  color: #eee;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.quant-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.quant-header h2 {
+  margin: 0;
+  margin-right: auto;
+}
+
+.back-link,
+.nav-link {
+  color: #8ab4ff;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.quant-upload {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quant-upload input[type='text'],
+.quant-upload input:not([type]) {
+  background: #1a1a19;
+  border: 1px solid #383835;
+  color: #eee;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.quant-upload select {
+  background: #1a1a19;
+  border: 1px solid #383835;
+  color: #eee;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.error-text {
+  color: #e66767;
+  font-size: 12px;
+}
+
+.quant-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+}
+
+.quant-section {
+  background: #17171c;
+  border: 1px solid #2a2a33;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.quant-section-wide {
+  grid-column: 1 / -1;
+}
+
+.quant-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.quant-section-header h3 {
+  margin: 0;
+  font-size: 14px;
+  color: #c3c2b7;
+}
+
+.quant-section-header select {
+  background: #1a1a19;
+  border: 1px solid #383835;
+  color: #eee;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.quant-section-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.quant-empty-hint {
+  color: #666;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+@media (max-width: 900px) {
+  .quant-page {
+    height: auto;
+    overflow: visible;
+  }
+
+  .quant-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-auto-rows: 420px;
+  }
+}
