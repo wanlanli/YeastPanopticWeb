@@ -22,6 +22,7 @@ import os
 import sys
 from pathlib import Path
 
+import cv2
 import numpy as np
 import torch
 
@@ -59,10 +60,44 @@ SCORE_THRESHOLD = float(os.environ.get("PANOPTIC_SCORE_THRESHOLD", "0.1"))
 INSTANCE_SCORE_THRESHOLD = float(os.environ.get("PANOPTIC_INSTANCE_THRESHOLD", "0.6"))
 AREA_THRESHOLD = int(os.environ.get("PANOPTIC_AREA_THRESHOLD", "300"))
 
+# Matches demo.py's --infer-size: resize so the longer side is this many
+# pixels before running the model, then scale results back up to the
+# original resolution. Real microscopy frames (e.g. 2048x2048) are much
+# bigger than this fine-tuned model was trained/is fast at; skipping this
+# on a large frame is a lot slower for no accuracy benefit. 0/unset to
+# disable and always predict at full resolution.
+_infer_size_env = int(os.environ.get("PANOPTIC_INFER_SIZE", "1024"))
+INFER_SIZE = _infer_size_env or None
+
 for _sub in ("detectron2", "", "projects/Panoptic-DeepLab"):
     _path = PANOPTIC_REPO_PATH / _sub if _sub else PANOPTIC_REPO_PATH
     sys.path.insert(0, str(_path.resolve()))
 os.environ.setdefault("DETECTRON2_DATASETS", PANOPTIC_DATASET_ROOT)
+
+
+def _resize_long_side(image: np.ndarray, target: int) -> np.ndarray:
+    """Mirrors demo.py's resize_long_side(): resize so the longer side
+    equals `target`, keeping aspect ratio."""
+    h, w = image.shape[:2]
+    scale = target / max(h, w)
+    new_w, new_h = max(1, round(w * scale)), max(1, round(h * scale))
+    interp = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+    return cv2.resize(image, (new_w, new_h), interpolation=interp)
+
+
+def _resize_masks(masks: np.ndarray, orig_size: tuple[int, int]) -> np.ndarray:
+    """Mirrors the mask-resizing part of demo.py's resize_instances(): scale
+    each predicted boolean mask back up to the original frame size (nearest-
+    neighbor, since these are label masks, not continuous-valued)."""
+    orig_h, orig_w = orig_size
+    if len(masks) == 0:
+        return np.zeros((0, orig_h, orig_w), dtype=bool)
+    return np.stack(
+        [
+            cv2.resize(m.astype(np.uint8), (orig_w, orig_h), interpolation=cv2.INTER_NEAREST).astype(bool)
+            for m in masks
+        ]
+    )
 
 
 class ModelHandler:
@@ -105,13 +140,23 @@ class ModelHandler:
         area_threshold: int = AREA_THRESHOLD,
         keep_border: bool = False,
     ) -> list[dict]:
-        prediction_output = self.predictor(rgb)
+        orig_size = rgb.shape[:2]
+        if INFER_SIZE and max(orig_size) > INFER_SIZE:
+            infer_rgb = _resize_long_side(rgb, INFER_SIZE)
+            logger.info("Resized %s -> %s for inference", orig_size, infer_rgb.shape[:2])
+        else:
+            infer_rgb = rgb
+
+        prediction_output = self.predictor(infer_rgb)
         instances = prediction_output["instances"]
 
         pred_masks = instances.pred_masks.to("cpu").numpy()
         scores = instances.scores
         instance_scores = instances.center_scores
         panoptic_labels = instances.panoptic_label.to("cpu").numpy()
+
+        if infer_rgb.shape[:2] != orig_size:
+            pred_masks = _resize_masks(pred_masks, orig_size)
 
         results = []
         for pred_mask, score, instance_score, panoptic_label in zip(

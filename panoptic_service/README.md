@@ -83,6 +83,13 @@ that extension yourself.
 - `PANOPTIC_SCORE_THRESHOLD` (default `0.1`), `PANOPTIC_INSTANCE_THRESHOLD`
   (default `0.6`), `PANOPTIC_AREA_THRESHOLD` (default `300`) — match
   `segment_post_process()`'s defaults in the model repo.
+- `PANOPTIC_INFER_SIZE` (default `1024`) — resize so the longer side is
+  this many pixels before running the model, then scale the resulting
+  masks back up to the original resolution (mirrors `demo.py`'s
+  `--infer-size`). Matters for real full-resolution microscopy frames
+  (e.g. 2048x2048), much bigger than this model was trained/is fast at --
+  has no effect on frames already smaller than this. Set to `0` to always
+  predict at full resolution.
 
 ## Until this is running
 
