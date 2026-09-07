@@ -191,13 +191,13 @@ export function Toolbar() {
           {t.label}
         </button>
       ))}
-      {tool === 'point-prompt' && !refineTarget && (
+      {(tool === 'draw' || (tool === 'point-prompt' && !refineTarget)) && (
         <select
           className="prompt-class-select"
           style={{ backgroundColor: colorForClass(promptClassId), color: textColorForClass(promptClassId) }}
           value={promptClassId}
           onChange={(e) => setPromptClassId(Number(e.target.value))}
-          title="Class new point-prompt polygons are labeled with"
+          title="Class new polygons are labeled with"
         >
           {CLASS_IDS.map((id) => (
             <option key={id} value={id}>

@@ -4,6 +4,8 @@ import { Circle, Group, Image as KonvaImage, Layer, Line, Stage } from 'react-ko
 import { api } from '../../api/client';
 import { useViewerStore } from '../../store/useViewerStore';
 import { BufferBar } from './BufferBar';
+import { CLASS_IDS, classDisplayName, classFromLabel, colorForClass } from './colorByClass';
+import './ContextMenu.css';
 import { PolygonLayer } from './PolygonLayer';
 import { useDraftActions } from './useDraftActions';
 import { useHtmlImage } from './useHtmlImage';
@@ -12,19 +14,6 @@ import './ImageCanvas.css';
 
 const CLOSE_POLYGON_TOLERANCE_PX = 8; // screen pixels, converted via /scale below
 const AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000;
-
-/** Standard ray-casting point-in-polygon test. */
-function isPointInPolygon(pt: [number, number], polygon: [number, number][]): boolean {
-  const [x, y] = pt;
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const [xi, yi] = polygon[i];
-    const [xj, yj] = polygon[j];
-    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
-    if (intersects) inside = !inside;
-  }
-  return inside;
-}
 
 export function ImageCanvas() {
   const series = useViewerStore((s) => s.series);
@@ -71,6 +60,39 @@ export function ImageCanvas() {
     a: [number, number][];
     b: [number, number][];
   } | null>(null);
+  /** right-click-on-polygon menu: select it / change its cell type */
+  const [typeMenu, setTypeMenu] = useState<{ polygonId: number; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!typeMenu) return;
+    const close = () => setTypeMenu(null);
+    const onKeyDown = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    window.addEventListener('click', close);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [typeMenu]);
+
+  async function handleChangeType(polygonId: number, newClassId: number) {
+    setTypeMenu(null);
+    const p = polygons.find((poly) => poly.id === polygonId);
+    if (!p) return;
+    setSelectedPolygonId(polygonId);
+    const currentClassId = classFromLabel(p.label);
+    const instance = currentClassId !== null ? Number(p.label) - currentClassId * 1000 : 1;
+    const newLabel = String(newClassId * 1000 + (Number.isFinite(instance) ? instance : 1));
+    if (newLabel === p.label) return;
+    const updated = await api.updatePolygon(p.id, { label: newLabel });
+    upsertPolygon(updated);
+    pushAction({
+      type: 'update',
+      id: p.id,
+      before: { points: p.points, label: p.label },
+      after: { points: updated.points, label: updated.label },
+    });
+  }
 
   const imageUrl = series
     ? api.frameUrl(
@@ -314,6 +336,12 @@ export function ImageCanvas() {
   }
 
   async function handleStageClick(e: Konva.KonvaEventObject<MouseEvent>) {
+    // Konva's onClick fires for every mouse button, not just left -- without
+    // this guard, a right-click double-fires: handleContextMenu adds the
+    // intended exclude point, and this handler (unfiltered) added an unwanted
+    // include point in the same click, corrupting the point sequence.
+    if (e.evt.button !== 0) return;
+
     const stage = e.target.getStage();
     const clickedOnEmpty = e.target === stage || e.target.className === 'Image';
     if (!clickedOnEmpty) return; // a polygon/vertex handled its own click
@@ -357,23 +385,21 @@ export function ImageCanvas() {
     promptWarningTimeoutRef.current = setTimeout(() => setPromptWarning(null), 2000);
   }
 
-  /** Shared by left-click (include) and right-click (exclude) point-prompt clicks. */
+  /** Shared by left-click (include) and right-click (exclude) point-prompt clicks.
+   * Every accumulated point (both include and exclude, in click order) is sent
+   * together on each call, so the model always resolves one combined mask from
+   * the full set -- not just the latest click. */
   async function addPromptPoint(pt: [number, number], label: 0 | 1) {
     if (!series) return;
-    // An include point already inside the current mask adds no new
-    // information and is usually a miss-click -- exclude points still work
-    // anywhere, since they're normally placed inside the mask on purpose,
-    // to carve a wrongly-included area back out.
-    if (label === 1 && promptPreview && isPointInPolygon(pt, promptPreview)) {
-      showPromptWarning('That point is already inside the current mask — click outside it to expand, or right-click to exclude part of it');
-      return;
-    }
     const nextPoints = [...promptPoints, { x: pt[0], y: pt[1], label }];
     setPromptPoints(nextPoints);
     setIsPredicting(true);
     try {
       const result = await api.predictPoint(series.id, frameIndex, nextPoints);
       setPromptPreview(result.polygons[0] ?? null);
+    } catch (e) {
+      setPromptPoints(promptPoints); // roll back -- this point never resolved to a mask
+      showPromptWarning(e instanceof Error ? e.message : 'Point-prompt prediction failed');
     } finally {
       setIsPredicting(false);
     }
@@ -507,6 +533,10 @@ export function ImageCanvas() {
                 onCommitPoints={(pts) => commitPolygon(poly.id, pts)}
                 onVertexClick={handleVertexClick}
                 onReshapeClick={addReshapePoint}
+                onRequestTypeMenu={(polygonId, x, y) => {
+                  setSelectedPolygonId(polygonId);
+                  setTypeMenu({ polygonId, x, y });
+                }}
               />
             ))}
 
@@ -617,6 +647,21 @@ export function ImageCanvas() {
           </Group>
         </Layer>
       </Stage>
+
+      {typeMenu && (
+        <div
+          className="context-menu"
+          style={{ left: typeMenu.x, top: typeMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {CLASS_IDS.map((id) => (
+            <button key={id} onClick={() => handleChangeType(typeMenu.polygonId, id)}>
+              <span className="context-menu-swatch" style={{ background: colorForClass(id) }} />
+              {classDisplayName(id)}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

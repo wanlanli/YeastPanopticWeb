@@ -43,7 +43,7 @@ class SeriesMetadata:
     dic_channel_index: int | None = None  # best-guess transmitted-light channel
 
 
-def _sorted_frame_files(folder: Path) -> list[Path]:
+def sorted_frame_files(folder: Path) -> list[Path]:
     files = [
         p
         for p in folder.iterdir()
@@ -222,7 +222,7 @@ def probe_series(source_type: str, path: str) -> SeriesMetadata:
         )
 
     if source_type in ("folder", "upload"):
-        files = _sorted_frame_files(p)
+        files = sorted_frame_files(p)
         if not files:
             raise ValueError(f"No supported image files found in {p}")
         first = _read_single_frame_file(files[0])
@@ -303,7 +303,7 @@ def read_frame(
             return tf.pages[page_index].asarray()
 
     if source_type in ("folder", "upload"):
-        files = _sorted_frame_files(p)
+        files = sorted_frame_files(p)
         if frame_index < 0 or frame_index >= len(files):
             raise IndexError(f"frame_index {frame_index} out of range")
         return _read_single_frame_file(files[frame_index])

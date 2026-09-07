@@ -1,5 +1,6 @@
 import type {
   FeatureTablePage,
+  FrameMeasureResult,
   PolygonAnnotation,
   Project,
   QuantificationDataset,
@@ -37,6 +38,7 @@ export const api = {
   listSeries: (projectId: number) =>
     request<Series[]>(`/api/series?project_id=${projectId}`),
   getSeries: (id: number) => request<Series>(`/api/series/${id}`),
+  deleteSeries: (id: number) => request<{ ok: boolean }>(`/api/series/${id}`, { method: 'DELETE' }),
   registerSeriesPath: (projectId: number, name: string, path: string) =>
     request<Series>('/api/series/register-path', {
       method: 'POST',
@@ -64,6 +66,12 @@ export const api = {
     }),
   getSeriesTracking: (seriesId: number) =>
     request<SeriesTrackingMap>(`/api/series/${seriesId}/tracking`),
+  getFrameNames: (seriesId: number) =>
+    request<{ names: string[] | null }>(`/api/series/${seriesId}/frame-names`),
+  measureFrame: (seriesId: number, frameIndex: number, pixelSize = 1) =>
+    request<FrameMeasureResult>(
+      `/api/series/${seriesId}/frame/${frameIndex}/measure?pixel_size=${pixelSize}`,
+    ),
   frameMaskUrl: (seriesId: number, frameIndex: number) =>
     `/api/series/${seriesId}/frame/${frameIndex}/mask`,
   seriesMaskUrl: (seriesId: number) => `/api/series/${seriesId}/mask`,
@@ -144,9 +152,9 @@ export const api = {
     return request<TsneResult>(`/api/quantification/${datasetId}/tsne?${params}`);
   },
   datasetDownloadUrl: (datasetId: number) => `/api/quantification/${datasetId}/download`,
-  computeQuantification: (seriesId: number, fillGaps = false) =>
+  computeQuantification: (seriesId: number, fillGaps = false, pixelSize = 1) =>
     request<QuantificationDataset[]>('/api/quantification/compute', {
       method: 'POST',
-      body: JSON.stringify({ series_id: seriesId, fill_gaps: fillGaps }),
+      body: JSON.stringify({ series_id: seriesId, fill_gaps: fillGaps, pixel_size: pixelSize }),
     }),
 };

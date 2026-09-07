@@ -1,7 +1,9 @@
 import json
+import shutil
 import uuid
 from pathlib import Path
 
+import numpy as np
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -11,9 +13,10 @@ from app.db import get_db
 from app.models.polygon import Polygon
 from app.models.quantification import QuantificationDataset
 from app.models.series import ImageSeries
-from app.schemas.quantification import SeriesTrackingMap
+from app.schemas.quantification import FrameMeasureResult, SeriesTrackingMap
 from app.schemas.series import SeriesChannelUpdate, SeriesOut, SeriesRegisterPath
 from app.services import image_io, mask_io
+from app.services import quantification_compute
 
 router = APIRouter(prefix="/api/series", tags=["series"])
 
@@ -47,6 +50,34 @@ def get_series(series_id: int, db: Session = Depends(get_db)):
     if not series:
         raise HTTPException(404, "Series not found")
     return series
+
+
+@router.delete("/{series_id}")
+def delete_series(series_id: int, db: Session = Depends(get_db)):
+    series = db.get(ImageSeries, series_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+
+    datasets = (
+        db.query(QuantificationDataset).filter(QuantificationDataset.series_id == series_id).all()
+    )
+    for dataset in datasets:
+        Path(dataset.file_path).unlink(missing_ok=True)
+        db.delete(dataset)
+
+    # Only ever remove files we manage ourselves (this series' own upload
+    # directory). register-path can point at ANY existing folder on disk
+    # (e.g. sample_data) -- deleting the series must never touch that.
+    try:
+        upload_root = UPLOAD_DIR.resolve()
+        relative = Path(series.path).resolve().relative_to(upload_root)
+        shutil.rmtree(upload_root / relative.parts[0], ignore_errors=True)
+    except (OSError, ValueError):
+        pass  # not one of our managed uploads (or already gone) -- leave it
+
+    db.delete(series)  # cascades to polygons (see relationship on the model)
+    db.commit()
+    return {"ok": True}
 
 
 @router.post("/register-path", response_model=SeriesOut)
@@ -146,6 +177,20 @@ def set_series_channel(series_id: int, body: SeriesChannelUpdate, db: Session = 
     return series
 
 
+@router.get("/{series_id}/frame-names")
+def get_frame_names(series_id: int, db: Session = Depends(get_db)):
+    """The original filename for each frame, for series registered from a
+    folder/upload of separate image files (one file = one frame). None for
+    multipage_tiff series, which have no such per-frame file identity."""
+    series = db.get(ImageSeries, series_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+    if series.source_type not in ("folder", "upload"):
+        return {"names": None}
+    files = image_io.sorted_frame_files(Path(series.path))
+    return {"names": [f.name for f in files]}
+
+
 @router.get("/{series_id}/frame/{frame_index}")
 def get_frame(
     series_id: int,
@@ -180,6 +225,19 @@ def _frame_polygons(db: Session, series_id: int, frame_index: int) -> list[tuple
     return [(p.label, p.points) for p in rows]
 
 
+def _source_stem(series: ImageSeries, frame_index: int | None = None) -> str:
+    """Best available real source name for a download filename: the
+    frame's own original file (folder/upload of many files), else the
+    series' single source file, else just the series' display name."""
+    if frame_index is not None and series.source_type in ("folder", "upload"):
+        files = image_io.sorted_frame_files(Path(series.path)) if Path(series.path).is_dir() else []
+        if 0 <= frame_index < len(files):
+            return files[frame_index].stem
+    if series.original_filename:
+        return Path(series.original_filename).stem
+    return series.name
+
+
 @router.get("/{series_id}/frame/{frame_index}/mask")
 def get_frame_mask(series_id: int, frame_index: int, db: Session = Depends(get_db)):
     series = db.get(ImageSeries, series_id)
@@ -191,7 +249,7 @@ def get_frame_mask(series_id: int, frame_index: int, db: Session = Depends(get_d
     polygons = _frame_polygons(db, series_id, frame_index)
     mask = mask_io.rasterize_polygons(polygons, series.height, series.width)
     tiff_bytes = mask_io.mask_to_tiff_bytes(mask)
-    filename = f"{series.name}_frame{frame_index}_mask.tif"
+    filename = f"{_source_stem(series, frame_index)}_mask.tif"
     return Response(
         content=tiff_bytes,
         media_type="image/tiff",
@@ -227,6 +285,34 @@ def get_series_tracking_map(series_id: int, db: Session = Depends(get_db)):
     return SeriesTrackingMap(dataset_id=dataset.id, frame_track_map=frame_track_map)
 
 
+@router.get("/{series_id}/frame/{frame_index}/measure", response_model=FrameMeasureResult)
+def measure_frame(
+    series_id: int, frame_index: int, pixel_size: float = 1.0, db: Session = Depends(get_db)
+):
+    """Lightweight, on-demand per-object geometry (area, skeleton lengths,
+    ...) for this frame's currently saved polygons -- no intensity, no
+    tracking, nothing persisted. For the full series-wide pipeline
+    (intensity, cross-frame tracking), see POST /api/quantification/compute.
+
+    `pixel_size` ("resolution" in the UI) is the physical size of one pixel
+    (e.g. um/px); area/length columns come back already scaled by it --
+    leave at 1.0 for raw pixels."""
+    series = db.get(ImageSeries, series_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+    if frame_index < 0 or frame_index >= series.frame_count:
+        raise HTTPException(404, f"frame_index {frame_index} out of range")
+
+    mask = quantification_compute.frame_mask(db, series, frame_index)
+    try:
+        table = quantification_compute.compute_geometry(mask, pixel_size=pixel_size)
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    rows = table.replace({np.nan: None}).to_dict(orient="records")
+    return FrameMeasureResult(columns=list(table.columns), rows=rows)
+
+
 @router.get("/{series_id}/mask")
 def get_series_mask(series_id: int, db: Session = Depends(get_db)):
     series = db.get(ImageSeries, series_id)
@@ -239,7 +325,7 @@ def get_series_mask(series_id: int, db: Session = Depends(get_db)):
         frames.append(mask_io.rasterize_polygons(polygons, series.height, series.width))
 
     tiff_bytes = mask_io.mask_stack_to_tiff_bytes(frames)
-    filename = f"{series.name}_mask.tif"
+    filename = f"{_source_stem(series)}_mask.tif"
     return Response(
         content=tiff_bytes,
         media_type="image/tiff",

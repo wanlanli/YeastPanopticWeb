@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import String, DateTime, Integer, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -36,3 +37,12 @@ class ImageSeries(Base):
     polygons: Mapped[list["Polygon"]] = relationship(
         back_populates="series", cascade="all, delete-orphan"
     )
+
+    @property
+    def original_filename(self) -> str | None:
+        """The real source filename, for series backed by a single file
+        (multipage_tiff, or an upload of one). None for a folder/upload of
+        many separate frame files -- see GET .../frame-names for those."""
+        if self.source_type in ("multipage_tiff", "upload") and Path(self.path).is_file():
+            return Path(self.path).name
+        return None

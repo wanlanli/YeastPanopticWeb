@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 
 import numpy as np
+import torch
 from segment_anything import SamPredictor, sam_model_registry
 
 from mask_utils import mask_to_polygon
@@ -20,14 +21,15 @@ from mask_utils import mask_to_polygon
 logger = logging.getLogger(__name__)
 
 SERVICE_DIR = Path(__file__).resolve().parent
-DEFAULT_CHECKPOINT_PATH = SERVICE_DIR / "storage" / "models" / "sam_point_prompt.pth"
+DEFAULT_CHECKPOINT_PATH = Path("/home/wlli/Data/sam_model/sam_vit_h_4b8939.pth")
 
-# To try a fine-tuned model, overwrite the checkpoint file at this path (or
-# point SAM_CHECKPOINT_PATH at it) -- no code change needed as long as
-# SAM_MODEL_TYPE still matches its architecture.
+# To try a different checkpoint, point SAM_CHECKPOINT_PATH at it -- no code
+# change needed as long as SAM_MODEL_TYPE matches its architecture (vit_b /
+# vit_l / vit_h -- the checkpoint filename conventionally says which).
 SAM_CHECKPOINT_PATH = Path(os.environ.get("SAM_CHECKPOINT_PATH", str(DEFAULT_CHECKPOINT_PATH)))
-SAM_MODEL_TYPE = os.environ.get("SAM_MODEL_TYPE", "vit_b")
-SAM_DEVICE = os.environ.get("SAM_DEVICE", "cpu")
+SAM_MODEL_TYPE = os.environ.get("SAM_MODEL_TYPE", "vit_h")
+# Auto-detect GPU unless explicitly overridden.
+SAM_DEVICE = os.environ.get("SAM_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class ModelHandler:

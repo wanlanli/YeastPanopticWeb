@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { useViewerStore } from '../../store/useViewerStore';
+import { FrameMeasurePanel } from './FrameMeasurePanel';
 import { PolygonList } from './PolygonList';
 import { TrackingTree } from '../quantification/TrackingTree';
 import './RightPanel.css';
@@ -48,10 +49,17 @@ export function RightPanel() {
         >
           Tracking
         </button>
+        <button
+          className={rightPanelTab === 'quantification' ? 'active' : ''}
+          onClick={() => setRightPanelTab('quantification')}
+        >
+          Quantification
+        </button>
       </div>
 
       <div className="right-panel-body">
         {rightPanelTab === 'labels' && <PolygonList />}
+        {rightPanelTab === 'quantification' && <FrameMeasurePanel />}
         {rightPanelTab === 'tracking' &&
           (isMovie ? (
             <div className="tracking-tab">

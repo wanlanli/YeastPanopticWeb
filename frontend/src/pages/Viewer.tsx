@@ -9,6 +9,7 @@ import { ImageCanvas } from '../components/viewer/ImageCanvas';
 import { RightPanel } from '../components/viewer/RightPanel';
 import { Toolbar } from '../components/viewer/Toolbar';
 import { useViewerStore } from '../store/useViewerStore';
+import '../components/viewer/ContextMenu.css';
 import './Viewer.css';
 
 export function Viewer() {
@@ -23,6 +24,8 @@ export function Viewer() {
   const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [seriesMenu, setSeriesMenu] = useState<{ id: number; x: number; y: number } | null>(null);
+
   const series = useViewerStore((s) => s.series);
   const setSeries = useViewerStore((s) => s.setSeries);
 
@@ -31,6 +34,34 @@ export function Viewer() {
     setSeriesList(list);
     return list;
   }
+
+  async function handleDeleteSeries(id: number) {
+    setSeriesMenu(null);
+    const target = seriesList.find((s) => s.id === id);
+    if (!target) return;
+    if (
+      !window.confirm(
+        `Delete "${target.name}" (${target.frame_count} frame${target.frame_count === 1 ? '' : 's'})? This removes all its polygons and computed quantification, and cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    await api.deleteSeries(id);
+    if (series?.id === id) setSeries(null);
+    await refreshSeries();
+  }
+
+  useEffect(() => {
+    if (!seriesMenu) return;
+    const close = () => setSeriesMenu(null);
+    const onKeyDown = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    window.addEventListener('click', close);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [seriesMenu]);
 
   useEffect(() => {
     refreshSeries();
@@ -122,6 +153,11 @@ export function Viewer() {
               <button
                 className={series?.id === s.id ? 'active' : ''}
                 onClick={() => setSeries(s)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSeriesMenu({ id: s.id, x: e.clientX, y: e.clientY });
+                }}
                 title={`${s.width}x${s.height}, ${s.frame_count} frames, ${s.dtype}`}
               >
                 {s.name}
@@ -133,6 +169,18 @@ export function Viewer() {
           ))}
           {seriesList.length === 0 && <li className="empty-hint">No series yet</li>}
         </ul>
+
+        {seriesMenu && (
+          <div
+            className="context-menu"
+            style={{ left: seriesMenu.x, top: seriesMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button className="context-menu-danger" onClick={() => handleDeleteSeries(seriesMenu.id)}>
+              Delete series
+            </button>
+          </div>
+        )}
 
         <div className="add-series">
           <h4>Add series</h4>

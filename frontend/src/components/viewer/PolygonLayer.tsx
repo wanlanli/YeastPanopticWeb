@@ -28,6 +28,9 @@ interface Props {
    * point there (Konva routes the click here rather than bubbling it to the
    * stage, so this polygon has to forward it) */
   onReshapeClick: (point: [number, number]) => void;
+  /** right-click on this polygon (select tool only, not mid-reshape): opens
+   * a small menu to select it / change its cell type, at screen coords */
+  onRequestTypeMenu: (polygonId: number, screenX: number, screenY: number) => void;
 }
 
 // Fallback stroke color for polygons with no numeric (class) label -- the
@@ -52,6 +55,7 @@ export function PolygonLayer({
   onCommitPoints,
   onVertexClick,
   onReshapeClick,
+  onRequestTypeMenu,
 }: Props) {
   const classId = classFromLabel(polygon.label);
   const fillAlpha = isSelected ? SELECTED_FILL_ALPHA : UNSELECTED_FILL_ALPHA;
@@ -75,6 +79,10 @@ export function PolygonLayer({
   }
 
   function handlePolygonClick(e: Konva.KonvaEventObject<MouseEvent>) {
+    // Konva's onClick fires for every mouse button -- without this, a
+    // right-click on a polygon (e.g. to add a point-prompt exclude point
+    // nearby) would also select/reshape it via this unfiltered handler.
+    if (e.evt.button !== 0) return;
     onSelect();
     if (!reshaping) return; // plain clicks on the fill/edge don't insert points -- too easy to miss-click
     const stage = e.target.getStage();
@@ -88,6 +96,12 @@ export function PolygonLayer({
     onReshapeClick([pos.x, pos.y]);
   }
 
+  function handlePolygonContextMenu(e: Konva.KonvaEventObject<PointerEvent>) {
+    e.evt.preventDefault();
+    if (reshaping) return; // mid-cut: right-click has no separate meaning here
+    onRequestTypeMenu(polygon.id, e.evt.clientX, e.evt.clientY);
+  }
+
   return (
     <>
       <Line
@@ -99,6 +113,7 @@ export function PolygonLayer({
         listening={interactive}
         onClick={handlePolygonClick}
         onTap={onSelect}
+        onContextMenu={handlePolygonContextMenu}
         onMouseEnter={() => {
           if (hoverSelectEnabled && !isSelected) onSelect();
         }}

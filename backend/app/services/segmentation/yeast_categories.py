@@ -13,6 +13,11 @@ YEAST_CATEGORIES = [
     {"id": 7, "name": "unknown"},
     {"id": 8, "name": "unknown"},
     {"id": 9, "name": "unknown"},
+    # 10-12 are manual-annotation-only extras (not produced by the model
+    # itself), matching frontend/src/components/viewer/colorByClass.ts
+    {"id": 10, "name": "Merge error"},
+    {"id": 11, "name": "Low confidence"},
+    {"id": 12, "name": "Unknown / Other"},
 ]
 
 

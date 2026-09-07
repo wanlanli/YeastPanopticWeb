@@ -22,6 +22,7 @@ export function Quantification() {
   const [seriesList, setSeriesList] = useState<Series[]>([]);
   const [computeSeriesId, setComputeSeriesId] = useState<number | null>(null);
   const [fillGaps, setFillGaps] = useState(false);
+  const [resolution, setResolution] = useState(1);
   const [computing, setComputing] = useState(false);
   const [computeError, setComputeError] = useState<string | null>(null);
 
@@ -48,7 +49,7 @@ export function Quantification() {
     setComputing(true);
     setComputeError(null);
     try {
-      const created = await api.computeQuantification(computeSeriesId, fillGaps);
+      const created = await api.computeQuantification(computeSeriesId, fillGaps, resolution);
       await refresh();
       const features = created.find((d) => d.kind === 'features');
       const tracking = created.find((d) => d.kind === 'tracking');
@@ -114,6 +115,18 @@ export function Quantification() {
               disabled={computing}
             />
             Fill short segmentation gaps
+          </label>
+          <label className="quant-resolution">
+            Resolution
+            <input
+              type="number"
+              step="any"
+              min={0}
+              value={resolution}
+              onChange={(e) => setResolution(Number(e.target.value))}
+              disabled={computing}
+              title="Physical size of one pixel (e.g. um/px) -- area/length columns are scaled by it. Leave at 1 for raw pixel units."
+            />
           </label>
           <button onClick={handleCompute} disabled={computing || !computeSeriesId}>
             {computing ? 'Computing…' : 'Compute Quantification'}

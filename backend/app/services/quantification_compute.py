@@ -19,16 +19,21 @@ from app.config import CELLMATE_PATH
 from app.models.polygon import Polygon
 from app.models.series import ImageSeries
 from app.services import image_io, mask_io
+from app.services.segmentation.yeast_categories import class_name
 
 _cellmate_ready = False
 
+# The subset of ImageMeasure's property_table kept in the quantification
+# output (it computes many more -- coords, skeleton point arrays, bbox,
+# is_out_of_border, ... -- not useful as flat table columns). "semantic" is
+# translated to a readable "type" name (see compute_geometry) rather than
+# kept as a raw class id.
 GEOMETRY_COLUMNS = [
     "label",
     "semantic",
-    "instance",
     "area",
-    "axis_major_length",
-    "axis_minor_length",
+    "skeleton_major_length",
+    "skeleton_minor_length",
     "eccentricity",
     "orientation",
     "centroid_0",
@@ -55,10 +60,28 @@ def _ensure_cellmate_on_path() -> None:
 def compute_geometry(
     mask: np.ndarray, pixel_size: float = 1.0, sampling_interval: int = 5
 ) -> pd.DataFrame:
-    """Per-object geometric features (area, axis lengths, eccentricity, ...)
-    from a labeled mask, via CellMate's ImageMeasure."""
+    """Per-object geometric features (area, skeleton lengths, eccentricity,
+    ...) from a labeled mask, via CellMate's ImageMeasure. `pixel_size` is
+    the physical size of one pixel (e.g. um/px); area/length columns come
+    back already scaled by it (area by pixel_size**2, lengths by
+    pixel_size) -- leave at 1.0 for raw pixel units.
+
+    `sampling_interval` is in *pixels* from this function's perspective (we
+    never expose it to the user, only `pixel_size`), but CellMate itself
+    treats it as a physical distance and converts to pixels by dividing by
+    pixel_size (`pixel_distance = sampling_interval / pixel_size`). At a
+    small pixel_size (e.g. 0.065 um/px, a real microscopy resolution) that
+    inflates to a huge pixel distance -- larger than a whole cell's
+    skeleton -- leaving zero sample points and crashing deep inside
+    CellMate (IndexError on an empty skeleton grid). Pre-multiplying here
+    cancels that division out, keeping the sampling grid a constant few
+    pixels regardless of resolution."""
+    if pixel_size <= 0:
+        raise RuntimeError("Resolution (pixel_size) must be greater than 0")
+
+    out_columns = [*GEOMETRY_COLUMNS[:1], "type", *GEOMETRY_COLUMNS[2:]]
     if not np.any(mask):
-        return pd.DataFrame(columns=GEOMETRY_COLUMNS)
+        return pd.DataFrame(columns=out_columns)
 
     _ensure_cellmate_on_path()
     from cellmate.image_measure import ImageMeasure
@@ -66,12 +89,15 @@ def compute_geometry(
     measure = ImageMeasure(
         mask.astype(np.int32),
         pixel_size=pixel_size,
-        sampling_interval=sampling_interval,
+        sampling_interval=sampling_interval * pixel_size,
         equidistant=True,
     )
     table = measure.property_table
     cols = [c for c in GEOMETRY_COLUMNS if c in table.columns]
-    return table[cols].copy()
+    result = table[cols].copy()
+    result["semantic"] = result["semantic"].apply(lambda c: class_name(int(c)))
+    result = result.rename(columns={"semantic": "type"})
+    return result[[c for c in out_columns if c in result.columns]]
 
 
 def compute_intensity(
@@ -186,7 +212,7 @@ def _series_non_dic_channels(series: ImageSeries) -> list[tuple[int, str]]:
     return [(i, names[i]) for i in range(series.channel_count) if i != dic]
 
 
-def _frame_mask(db: Session, series: ImageSeries, frame_index: int) -> np.ndarray:
+def frame_mask(db: Session, series: ImageSeries, frame_index: int) -> np.ndarray:
     rows = (
         db.query(Polygon)
         .filter(Polygon.series_id == series.id, Polygon.frame_index == frame_index)
@@ -220,7 +246,7 @@ def compute_series_quantification(
     continuous."""
     non_dic_channels = _series_non_dic_channels(series)
 
-    masks = [_frame_mask(db, series, f) for f in range(series.frame_count)]
+    masks = [frame_mask(db, series, f) for f in range(series.frame_count)]
     mask_stack = (
         np.stack(masks, axis=0)
         if masks
@@ -257,8 +283,9 @@ def compute_series_quantification(
             merged = geom
 
         if interpolated:
-            merged["source"] = merged["instance"].apply(
-                lambda inst: "interpolated" if (frame_index, int(inst)) in interpolated else "segmented"
+            # instance = label % 1000 (the `1000*semantic + instance` scheme)
+            merged["source"] = merged["label"].apply(
+                lambda label: "interpolated" if (frame_index, int(label) % 1000) in interpolated else "segmented"
             )
         else:
             merged["source"] = "segmented"

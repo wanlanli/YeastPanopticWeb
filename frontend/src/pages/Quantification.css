@@ -83,6 +83,25 @@
   cursor: pointer;
 }
 
+.quant-resolution {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #ccc;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.quant-resolution input {
+  width: 56px;
+  background: #1a1a19;
+  border: 1px solid #383835;
+  color: #eee;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
 .quant-upload input[type='text'],
 .quant-upload input:not([type]) {
   background: #1a1a19;

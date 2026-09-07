@@ -26,14 +26,18 @@ uvicorn app:app --port 8200
 Then point the backend at it: `PANOPTIC_SERVICE_URL=http://localhost:8200 uvicorn app.main:app --reload --port 8000` (from `backend/`).
 
 Defaults (all overridable, see Config below):
-- Model repo: `/home/wlli/project/PytrochDeepyeast`
-- Config: `<repo>/projects/Panoptic-DeepLab/configs/yeast_panoptics/config.yaml`
-- Checkpoint: `<repo>/model_0159999_v2.pth`
-- Device: `cpu` (~5s per frame on CPU; set `PANOPTIC_DEVICE=cuda` if available)
+- Model repo (detectron2 + `prediction.Predictor`, read-only): `/home/wlli/project/PytrochDeepyeast`
+- Model dir (checkpoint + its own matching config.yaml, from the same
+  training run -- see `PANOPTIC_REPO_PATH`'s `demo.py` for the reference
+  inference pattern this mirrors): `/home/wlli/Data/oneformer_output`
+- Config: `<model dir>/config.yaml`
+- Checkpoint: `<model dir>/model_final.pth`
+- Device: auto-detected (`cuda` if `torch.cuda.is_available()`, else `cpu`;
+  override with `PANOPTIC_DEVICE`). ~4s/frame on CPU.
 
-Verified end to end against the real checkpoint and a real test image from
-that repo (`projects/Panoptic-DeepLab/testimages/00014.png`) — 52 instances
-detected in ~5s on CPU.
+Verified end to end: loads the checkpoint (~3s), runs real inference on a
+real multi-channel test series (6/6 cells detected, matching the prior
+checkpoint's output), and serves through the full backend API.
 
 ## How model loading works
 
@@ -66,13 +70,16 @@ that extension yourself.
 
 ## Config (env vars)
 
-- `PANOPTIC_REPO_PATH` — default `/home/wlli/project/PytrochDeepyeast`
-- `PANOPTIC_CONFIG_PATH` — default `<repo>/projects/Panoptic-DeepLab/configs/yeast_panoptics/config.yaml`
-- `PANOPTIC_CHECKPOINT_PATH` — default `<repo>/model_0159999_v2.pth`. To try
-  a different checkpoint, point this at it directly (e.g.
-  `<repo>/saved_model_20250701.pth`) -- no code change needed as long as it's
-  the same architecture/config.
-- `PANOPTIC_DEVICE` — `cpu` (default) / `cuda`
+- `PANOPTIC_REPO_PATH` — default `/home/wlli/project/PytrochDeepyeast` (detectron2 + `prediction.Predictor` code)
+- `PANOPTIC_MODEL_DIR` — default `/home/wlli/Data/oneformer_output` (checkpoint + its matching config.yaml)
+- `PANOPTIC_CONFIG_PATH` — default `<model dir>/config.yaml`
+- `PANOPTIC_CHECKPOINT_PATH` — default `<model dir>/model_final.pth`. To try
+  a different checkpoint, point this (and usually `PANOPTIC_CONFIG_PATH` too,
+  since checkpoints are saved paired with the exact config used to train
+  them) at it directly -- no code change needed as long as it's the same
+  architecture.
+- `PANOPTIC_DEVICE` — auto-detected (`cuda` if available, else `cpu`) unless
+  set explicitly.
 - `PANOPTIC_SCORE_THRESHOLD` (default `0.1`), `PANOPTIC_INSTANCE_THRESHOLD`
   (default `0.6`), `PANOPTIC_AREA_THRESHOLD` (default `300`) — match
   `segment_post_process()`'s defaults in the model repo.

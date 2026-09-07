@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { api } from '../../api/client';
 import { useViewerStore } from '../../store/useViewerStore';
 import './FrameNavigator.css';
 
@@ -6,12 +7,20 @@ export function FrameNavigator() {
   const series = useViewerStore((s) => s.series);
   const frameIndex = useViewerStore((s) => s.frameIndex);
   const isPlaying = useViewerStore((s) => s.isPlaying);
+  const frameNames = useViewerStore((s) => s.frameNames);
   const setFrameIndex = useViewerStore((s) => s.setFrameIndex);
   const setIsPlaying = useViewerStore((s) => s.setIsPlaying);
+  const setFrameNames = useViewerStore((s) => s.setFrameNames);
   const intervalRef = useRef<number | null>(null);
 
   const frameCount = series?.frame_count ?? 0;
   const maxIndex = Math.max(0, frameCount - 1);
+
+  useEffect(() => {
+    if (!series) return;
+    api.getFrameNames(series.id).then((res) => setFrameNames(res.names));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [series?.id]);
 
   useEffect(() => {
     if (!isPlaying || !series) return;
@@ -85,6 +94,12 @@ export function FrameNavigator() {
         {' / '}
         {maxIndex}
       </span>
+
+      {frameNames && frameNames[frameIndex] && (
+        <span className="frame-filename" title={frameNames[frameIndex]}>
+          {frameNames[frameIndex]}
+        </span>
+      )}
     </div>
   );
 }

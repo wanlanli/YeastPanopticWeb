@@ -20,6 +20,9 @@ export interface Series {
   channel_names: string[] | null;
   /** which channel segmentation models read; null if not yet chosen */
   dic_channel_index: number | null;
+  /** real source filename, for a series backed by one file; null for a
+   * folder/upload of many files (see api.getFrameNames for those) */
+  original_filename: string | null;
 }
 
 export interface PolygonAnnotation {
@@ -30,6 +33,11 @@ export interface PolygonAnnotation {
   label: string;
   source: 'manual' | 'model';
   updated_at: string;
+}
+
+export interface FrameMeasureResult {
+  columns: string[];
+  rows: Record<string, unknown>[];
 }
 
 export interface SeriesTrackingMap {

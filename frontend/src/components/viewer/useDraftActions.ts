@@ -1,6 +1,22 @@
 import { api } from '../../api/client';
+import type { PolygonAnnotation } from '../../api/types';
 import { useViewerStore } from '../../store/useViewerStore';
 import { classFromLabel } from './colorByClass';
+
+/** Next `1000*classId + instance` label for a new polygon of `classId`,
+ * picking up where the highest existing instance of that class on this
+ * frame left off (so new draws/prompts never collide with what's there). */
+function nextLabelForClass(polygons: PolygonAnnotation[], classId: number): string {
+  const nextInstanceByClass = new Map<number, number>();
+  for (const p of polygons) {
+    const c = classFromLabel(p.label);
+    if (c === null) continue;
+    const instance = Number(p.label) - c * 1000;
+    nextInstanceByClass.set(c, Math.max(nextInstanceByClass.get(c) ?? 0, instance));
+  }
+  const nextInstance = (nextInstanceByClass.get(classId) ?? 0) + 1;
+  return String(classId * 1000 + nextInstance);
+}
 
 /** Finish/cancel the in-progress draw or point-prompt draft. Shared so both
  * the canvas (Enter key, click-to-close gestures) and the Toolbar's Save
@@ -24,7 +40,9 @@ export function useDraftActions() {
       setDraftPoints([]);
       return;
     }
-    const created = await api.createPolygon(series.id, frameIndex, draftPoints, 'manual');
+    // same class picker (and default: class 1/cell) as point-prompt
+    const label = nextLabelForClass(polygons, promptClassId);
+    const created = await api.createPolygon(series.id, frameIndex, draftPoints, 'manual', label);
     upsertPolygon(created);
     pushAction({ type: 'create', polygon: created });
     setDraftPoints([]);
@@ -47,17 +65,7 @@ export function useDraftActions() {
           after: { points: updated.points, label: updated.label },
         });
       } else {
-        // keep instance numbers (the `1000 * class + instance` label scheme)
-        // from colliding with whatever's already on this frame
-        const nextInstanceByClass = new Map<number, number>();
-        for (const p of polygons) {
-          const classId = classFromLabel(p.label);
-          if (classId === null) continue;
-          const instance = Number(p.label) - classId * 1000;
-          nextInstanceByClass.set(classId, Math.max(nextInstanceByClass.get(classId) ?? 0, instance));
-        }
-        const nextInstance = (nextInstanceByClass.get(promptClassId) ?? 0) + 1;
-        const label = String(promptClassId * 1000 + nextInstance);
+        const label = nextLabelForClass(polygons, promptClassId);
         const created = await api.createPolygon(series.id, frameIndex, promptPreview, 'model', label);
         upsertPolygon(created);
         pushAction({ type: 'create', polygon: created });

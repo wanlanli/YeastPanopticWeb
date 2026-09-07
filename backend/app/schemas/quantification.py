@@ -33,6 +33,11 @@ class TrackingTree(BaseModel):
     nodes: list[dict[str, Any]]
 
 
+class FrameMeasureResult(BaseModel):
+    columns: list[str]
+    rows: list[dict[str, Any]]
+
+
 class SeriesTrackingMap(BaseModel):
     dataset_id: int | None
     # {frame_index (str) -> {original_polygon_label (str) -> track_id}}

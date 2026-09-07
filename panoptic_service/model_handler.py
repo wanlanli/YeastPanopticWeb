@@ -4,11 +4,15 @@ that repo to sys.path and imports from it, it never writes into it) and
 runs whole-frame instance segmentation.
 
 Mirrors demo.py's `build_predictor()` (same sys.path setup, same cfg
-overrides for CPU) and run_notebooks/post_process_utils.py's
-`segment_post_process()` (same score/instance/area/edge filtering, using
-`instances.panoptic_label` which is already `class_id * 1000 + instance_id`)
-from that repo, verified by running it directly against a real checkpoint
-and test image.
+overrides for CPU, same auto GPU/CPU device selection) and
+run_notebooks/post_process_utils.py's `segment_post_process()` (same
+score/instance/area/edge filtering, using `instances.panoptic_label`
+which is already `class_id * 1000 + instance_id`) from that repo,
+verified by running it directly against a real checkpoint and test image.
+
+Checkpoint: /home/wlli/Data/oneformer_output/model_final.pth, paired with
+the config.yaml saved alongside it from the same training run (see
+PANOPTIC_MODEL_DIR below).
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from mask_utils import largest_component, mask_to_polygon
 from yeast_categories import class_name
@@ -28,14 +33,22 @@ logger = logging.getLogger(__name__)
 # Read-only reference to the model repo -- see module docstring. Override
 # with PANOPTIC_REPO_PATH if it lives somewhere else.
 PANOPTIC_REPO_PATH = Path(os.environ.get("PANOPTIC_REPO_PATH", "/home/wlli/project/PytrochDeepyeast"))
+
+# Checkpoint + its own matching config.yaml, saved together from the same
+# training run (see demo.py in PANOPTIC_REPO_PATH for the reference
+# inference pattern this mirrors) -- NOT the repo's own
+# projects/Panoptic-DeepLab/configs/yeast_panoptics/config.yaml, which
+# differs slightly (e.g. MAX_SIZE_TRAIN, contrastive-loss head fields) and
+# corresponds to a different checkpoint.
+PANOPTIC_MODEL_DIR = Path(os.environ.get("PANOPTIC_MODEL_DIR", "/home/wlli/Data/oneformer_output"))
 PANOPTIC_CONFIG_PATH = os.environ.get(
-    "PANOPTIC_CONFIG_PATH",
-    str(PANOPTIC_REPO_PATH / "projects/Panoptic-DeepLab/configs/yeast_panoptics/config.yaml"),
+    "PANOPTIC_CONFIG_PATH", str(PANOPTIC_MODEL_DIR / "config.yaml")
 )
 PANOPTIC_CHECKPOINT_PATH = Path(
-    os.environ.get("PANOPTIC_CHECKPOINT_PATH", str(PANOPTIC_REPO_PATH / "model_0159999_v2.pth"))
+    os.environ.get("PANOPTIC_CHECKPOINT_PATH", str(PANOPTIC_MODEL_DIR / "model_final.pth"))
 )
-PANOPTIC_DEVICE = os.environ.get("PANOPTIC_DEVICE", "cpu")
+# Auto-detect GPU unless explicitly overridden.
+PANOPTIC_DEVICE = os.environ.get("PANOPTIC_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
 # DETECTRON2_DATASETS just needs to be set for dataset registration at
 # import time (see cityscapes_panoptic.py); it's never read from disk for
 # single-image inference.

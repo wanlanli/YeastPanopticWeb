@@ -24,6 +24,7 @@ class SeriesOut(BaseModel):
     channel_count: int
     channel_names: list[str] | None
     dic_channel_index: int | None
+    original_filename: str | None = None
 
     @field_validator("channel_names", mode="before")
     @classmethod

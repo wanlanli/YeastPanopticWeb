@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { PolygonAnnotation, Series, SeriesTrackingMap } from '../api/types';
 
-export type RightPanelTab = 'labels' | 'tracking';
+export type RightPanelTab = 'labels' | 'tracking' | 'quantification';
 
 export type Tool = 'select' | 'draw' | 'point-prompt';
 
@@ -58,6 +58,9 @@ interface ViewerState {
    * -> stable track id), fetched non-destructively -- polygon labels
    * themselves are never rewritten. Null until fetched / if none exists. */
   seriesTracking: SeriesTrackingMap | null;
+  /** original filename per frame, for folder/upload series (one file per
+   * frame); null for multipage_tiff series or before fetched. */
+  frameNames: string[] | null;
 
   setSeries: (series: Series | null) => void;
   setFrameIndex: (index: number) => void;
@@ -88,6 +91,7 @@ interface ViewerState {
   requestResetView: () => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   setSeriesTracking: (tracking: SeriesTrackingMap | null) => void;
+  setFrameNames: (names: string[] | null) => void;
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => ({
@@ -112,6 +116,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   resetViewToken: 0,
   rightPanelTab: 'labels',
   seriesTracking: null,
+  frameNames: null,
 
   setSeries: (series) =>
     set({
@@ -124,6 +129,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       future: [],
       seriesTracking: null,
       rightPanelTab: 'labels',
+      frameNames: null,
     }),
   setFrameIndex: (frameIndex) =>
     set((state) => ({
@@ -191,4 +197,5 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   requestResetView: () => set((state) => ({ resetViewToken: state.resetViewToken + 1 })),
   setRightPanelTab: (rightPanelTab) => set({ rightPanelTab }),
   setSeriesTracking: (seriesTracking) => set({ seriesTracking }),
+  setFrameNames: (frameNames) => set({ frameNames }),
 }));
