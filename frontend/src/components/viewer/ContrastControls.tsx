@@ -13,6 +13,7 @@ export function ContrastControls() {
   const vmin = useViewerStore((s) => s.vmin);
   const vmax = useViewerStore((s) => s.vmax);
   const setContrast = useViewerStore((s) => s.setContrast);
+  const requestResetView = useViewerStore((s) => s.requestResetView);
 
   const rangeMax = series ? maxForDtype(series.dtype) : 255;
   const [localMin, setLocalMin] = useState(vmin ?? 0);
@@ -66,6 +67,9 @@ export function ContrastControls() {
         />
       </label>
       <button onClick={() => setContrast(null, null)}>Auto</button>
+      <button onClick={requestResetView} title="Re-center the image and reset zoom to fill the window">
+        Fit to Window
+      </button>
     </div>
   );
 }

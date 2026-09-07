@@ -29,6 +29,7 @@ function isPointInPolygon(pt: [number, number], polygon: [number, number][]): bo
 export function ImageCanvas() {
   const series = useViewerStore((s) => s.series);
   const frameIndex = useViewerStore((s) => s.frameIndex);
+  const resetViewToken = useViewerStore((s) => s.resetViewToken);
   const vmin = useViewerStore((s) => s.vmin);
   const vmax = useViewerStore((s) => s.vmax);
   const tool = useViewerStore((s) => s.tool);
@@ -54,6 +55,7 @@ export function ImageCanvas() {
   const groupRef = useRef<Konva.Group>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
   const [isPredicting, setIsPredicting] = useState(false);
   const [promptWarning, setPromptWarning] = useState<string | null>(null);
   const promptWarningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -93,9 +95,11 @@ export function ImageCanvas() {
       x: (size.width - series.width * scale) / 2,
       y: (size.height - series.height * scale) / 2,
     });
-    // Refit only when the series (or the viewport) changes, not on every frame flip.
+    // Refit when the series, the viewport, or an explicit "Fit to Window"
+    // click (resetViewToken) changes -- not on every frame flip, and not on
+    // every pan/zoom, which live in the same `transform` state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [series?.id, size.width, size.height]);
+  }, [series?.id, size.width, size.height, resetViewToken]);
 
   useEffect(() => {
     if (!series) return;
@@ -456,7 +460,7 @@ export function ImageCanvas() {
         onWheel={handleWheel}
         onClick={handleStageClick}
         onContextMenu={handleContextMenu}
-        style={{ cursor: tool === 'select' ? 'default' : 'crosshair' }}
+        style={{ cursor: isPanning ? 'grabbing' : tool === 'select' ? 'default' : 'crosshair' }}
       >
         <Layer>
           <Group
@@ -465,6 +469,20 @@ export function ImageCanvas() {
             y={transform.y}
             scaleX={transform.scale}
             scaleY={transform.scale}
+            draggable
+            onDragStart={(e) => {
+              // Konva bubbles drag events up from whatever was actually
+              // dragged (e.g. a vertex Circle in PolygonLayer) -- only react
+              // when this Group itself is the thing being dragged, not a
+              // draggable descendant.
+              if (e.target !== e.currentTarget) return;
+              setIsPanning(true);
+            }}
+            onDragEnd={(e) => {
+              if (e.target !== e.currentTarget) return;
+              setIsPanning(false);
+              setTransform((t) => ({ ...t, x: e.target.x(), y: e.target.y() }));
+            }}
           >
             {image && <KonvaImage image={image} width={series.width} height={series.height} />}
 

@@ -42,6 +42,9 @@ interface ViewerState {
    * since most edits (drag a vertex, a cut, a type change) already persist
    * immediately with nothing left to explicitly "Save" */
   lastSavedAt: number | null;
+  /** bumped to ask the canvas to re-fit the image to the window, centered,
+   * at its initial zoom -- see ContrastControls' "Fit to Window" button */
+  resetViewToken: number;
 
   setSeries: (series: Series | null) => void;
   setFrameIndex: (index: number) => void;
@@ -68,6 +71,7 @@ interface ViewerState {
   replaceTopHistory: (action: PolygonAction) => void;
   clearHistory: () => void;
   markSaved: () => void;
+  requestResetView: () => void;
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => ({
@@ -88,6 +92,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   history: [],
   future: [],
   lastSavedAt: null,
+  resetViewToken: 0,
 
   setSeries: (series) =>
     set({ series, frameIndex: 0, polygons: [], selectedPolygonId: null, history: [], future: [] }),
@@ -153,4 +158,5 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   replaceTopHistory: (action) => set((state) => ({ history: [...state.history.slice(0, -1), action] })),
   clearHistory: () => set({ history: [], future: [] }),
   markSaved: () => set({ lastSavedAt: Date.now() }),
+  requestResetView: () => set((state) => ({ resetViewToken: state.resetViewToken + 1 })),
 }));
