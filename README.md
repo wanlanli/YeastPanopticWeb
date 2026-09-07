@@ -71,6 +71,71 @@ npm run dev
 Open http://localhost:5173. The dev server proxies `/api` to
 `http://localhost:8000`.
 
+## Deploying to another machine (e.g. a server)
+
+One-time setup, then one script starts everything:
+
+```
+git clone <this repo> && cd YeastPanopticWeb
+
+cd backend          && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate && cd ..
+cd sam_service       && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate && cd ..
+cd panoptic_service  && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && pip install 'git+https://github.com/cocodataset/panopticapi.git' && deactivate && cd ..
+cd frontend          && npm install && cd ..
+
+cp .env.example .env   # then edit the paths in it -- see below
+./scripts/run_all.sh   # starts all 4 services, prints the URL to open
+```
+
+`torch` (in `sam_service`/`panoptic_service`) installs with GPU support
+automatically from PyPI -- no special index/CUDA setup needed. If this
+machine has an NVIDIA GPU + driver, it's used automatically
+(`torch.cuda.is_available()`); otherwise everything runs on CPU.
+
+Stop everything with `./scripts/stop_all.sh`. Logs land in `logs/*.log`.
+
+### Config you need to change (`.env`)
+
+None of these live in this git repo -- they're large, machine-specific, or
+private, so a fresh checkout has none of them. See `.env.example` for the
+full list with explanations; the short version:
+
+- **`PANOPTIC_REPO_PATH`** — a separate private repo (detectron2 code the
+  panoptic model needs). Copy/clone it onto this machine first.
+- **`PANOPTIC_MODEL_DIR`** — the fine-tuned checkpoint + its matching
+  `config.yaml`, saved together. Copy this directory over (e.g. `rsync -avP`
+  from wherever it currently lives).
+- **`SAM_CHECKPOINT_PATH`** / **`SAM_MODEL_TYPE`** — either copy an existing
+  SAM checkpoint here, or run `cd sam_service && python3
+  scripts/download_checkpoint.py vit_h` (or `vit_b` for a smaller/faster
+  model if this server has no GPU) to fetch the official one directly.
+- **`CELLMATE_PATH`** — a checkout of the CellMate quantification library,
+  **with its Cython extensions built for this machine's own Python
+  version** (a `.so` built elsewhere won't load if the Python version
+  differs -- rebuild with `python3 setup.py build_ext --inplace` in
+  `cellmate/image_measure/measure/`, see `.env.example` for the exact
+  commands). Without this set, quantification features return a clear error
+  but everything else still works.
+- `SAM_SERVICE_URL` / `PANOPTIC_SERVICE_URL` can usually stay as
+  `http://localhost:8100` / `:8200` -- only change these if you're running
+  those services on a different machine than the backend.
+
+Any of the above left unset degrades gracefully rather than crashing:
+without `PANOPTIC_REPO_PATH`/`PANOPTIC_MODEL_DIR`, `panoptic_service`
+starts but `/health` reports why it can't load, and the backend falls back
+to a classical-CV placeholder for auto-segmentation; same idea for SAM and
+CellMate.
+
+### Accessing it from another machine (by IP)
+
+`scripts/run_all.sh` already binds every service to `0.0.0.0` and prints
+the URL to use (`http://<this-server-ip>:5173`). Only port **5173** needs
+to be reachable from wherever you're connecting from -- the frontend dev
+server proxies `/api/*` to the backend internally, so the other three ports
+(8000/8100/8200) don't need to be open through any firewall. Check the
+server's own IP with `hostname -I` if it's not obvious (e.g. it changed, or
+you're on a different network).
+
 ## Trying it out
 
 1. Create a project on the home page.
