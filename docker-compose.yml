@@ -1,0 +1,66 @@
+# Brings up all four services. One-time setup:
+#   cp .env.docker.example .env.docker   # then edit the HOST paths in it
+#   docker compose --env-file .env.docker up -d --build
+#
+# Open http://<this-server-ip>:5173 -- that's the only port published to
+# the host; the frontend's dev-server proxy reaches the other three
+# services over docker-compose's internal network, so 8000/8100/8200 never
+# need to be exposed through a firewall.
+#
+# CellMate's Cython extension (for quantification) is built automatically,
+# once, the first time the backend container starts (see
+# backend/docker-entrypoint.sh) -- against this image's own Python, so it
+# always matches, unlike copying a .so built on a different machine.
+#
+# Logs: docker compose logs -f [service]
+# Stop: docker compose down
+
+services:
+  sam_service:
+    build: ./sam_service
+    environment:
+      SAM_CHECKPOINT_PATH: /models/sam_checkpoint.pth
+      SAM_MODEL_TYPE: ${SAM_MODEL_TYPE:-vit_h}
+    volumes:
+      - ${SAM_CHECKPOINT_HOST}:/models/sam_checkpoint.pth:ro
+    # Uncomment to reach this service directly from the host (debugging only):
+    # ports:
+    #   - "8100:8100"
+
+  panoptic_service:
+    build: ./panoptic_service
+    environment:
+      PANOPTIC_REPO_PATH: /model_repo
+      PANOPTIC_MODEL_DIR: /model_dir
+    volumes:
+      - ${PANOPTIC_REPO_HOST}:/model_repo:ro
+      - ${PANOPTIC_MODEL_DIR_HOST}:/model_dir:ro
+    # ports:
+    #   - "8200:8200"
+
+  backend:
+    build: ./backend
+    environment:
+      SAM_SERVICE_URL: http://sam_service:8100
+      PANOPTIC_SERVICE_URL: http://panoptic_service:8200
+      CELLMATE_PATH: /cellmate
+    volumes:
+      - ${CELLMATE_HOST}:/cellmate # read-write: the Cython build writes .so files here
+      - backend_storage:/app/storage
+    depends_on:
+      - sam_service
+      - panoptic_service
+    # ports:
+    #   - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  backend_storage:

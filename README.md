@@ -73,6 +73,35 @@ Open http://localhost:5173. The dev server proxies `/api` to
 
 ## Deploying to another machine (e.g. a server)
 
+Two ways to run it there: plain Python envs (`scripts/run_all.sh`) or
+Docker Compose. Docker is the better choice if this needs to run on more
+than one machine, or if you'd rather not manage three separate Python
+environments by hand -- it pins the OS + Python version per service, so
+"works here, breaks there" mostly goes away. Either way, the same
+machine-specific files (model repo, checkpoints, CellMate) are needed; see
+"Config you need to change" below.
+
+### Option A: Docker Compose
+
+```
+git clone <this repo> && cd YeastPanopticWeb
+cp .env.docker.example .env.docker   # edit the paths in it -- see below
+docker compose --env-file .env.docker up -d --build
+```
+
+Open `http://<this-server-ip>:5173` (only this port is published to the
+host -- see "Accessing it from another machine" below). CellMate's Cython
+extension is built automatically, once, the first time the `backend`
+container starts (verified against a genuinely fresh CellMate checkout:
+built cleanly, no manual step needed) -- inside the container, so it always
+matches that container's own Python, regardless of what's on the host.
+
+Logs: `docker compose --env-file .env.docker logs -f [service]`. Stop:
+`docker compose --env-file .env.docker down` (add `-v` to also drop the
+backend's database/upload volume).
+
+### Option B: plain Python envs
+
 One-time setup, then one script starts everything:
 
 ```
@@ -106,47 +135,61 @@ no new system packages needed (just outbound network access).
 
 Stop everything with `./scripts/stop_all.sh`. Logs land in `logs/*.log`.
 
-### Config you need to change (`.env`)
+### Config you need to change (`.env` / `.env.docker`)
 
 None of these live in this git repo -- they're large, machine-specific, or
-private, so a fresh checkout has none of them. See `.env.example` for the
-full list with explanations; the short version:
+private, so a fresh checkout has none of them. Same underlying files
+either way; `.env.example` (plain envs) uses the path directly, e.g.
+`CELLMATE_PATH=/path/to/CellMate`, while `.env.docker.example` (Docker)
+uses a `_HOST` suffix for the same thing, e.g. `CELLMATE_HOST=...`, since
+that's a host-machine path being mounted into a container rather than a
+path the app reads directly. See whichever `.example` file you're using
+for the full list; the short version:
 
-- **`PANOPTIC_REPO_PATH`** — a separate private repo (detectron2 code the
-  panoptic model needs). Copy/clone it onto this machine first.
-- **`PANOPTIC_MODEL_DIR`** — the fine-tuned checkpoint + its matching
-  `config.yaml`, saved together. Copy this directory over (e.g. `rsync -avP`
-  from wherever it currently lives).
-- **`SAM_CHECKPOINT_PATH`** / **`SAM_MODEL_TYPE`** — either copy an existing
-  SAM checkpoint here, or run `cd sam_service && python3
-  scripts/download_checkpoint.py vit_h` (or `vit_b` for a smaller/faster
-  model if this server has no GPU) to fetch the official one directly.
-- **`CELLMATE_PATH`** — a checkout of the CellMate quantification library,
-  **with its Cython extensions built for this machine's own Python
-  version** (a `.so` built elsewhere won't load if the Python version
-  differs -- rebuild with `python3 setup.py build_ext --inplace` in
-  `cellmate/image_measure/measure/`, see `.env.example` for the exact
-  commands). Without this set, quantification features return a clear error
-  but everything else still works.
-- `SAM_SERVICE_URL` / `PANOPTIC_SERVICE_URL` can usually stay as
-  `http://localhost:8100` / `:8200` -- only change these if you're running
-  those services on a different machine than the backend.
+- **panoptic model repo** (`PANOPTIC_REPO_PATH` / `PANOPTIC_REPO_HOST`) — a
+  separate private repo (detectron2 code the panoptic model needs).
+  Copy/clone it onto this machine first.
+- **panoptic model dir** (`PANOPTIC_MODEL_DIR` / `PANOPTIC_MODEL_DIR_HOST`)
+  — the fine-tuned checkpoint + its matching `config.yaml`, saved together.
+  Copy this directory over (e.g. `rsync -avP` from wherever it currently
+  lives).
+- **SAM checkpoint** (`SAM_CHECKPOINT_PATH` / `SAM_CHECKPOINT_HOST`, plus
+  `SAM_MODEL_TYPE`) — either copy an existing checkpoint here, or run `cd
+  sam_service && python3 scripts/download_checkpoint.py vit_h` (or `vit_b`
+  for a smaller/faster model if this server has no GPU) to fetch the
+  official one directly.
+- **CellMate** (`CELLMATE_PATH` / `CELLMATE_HOST`) — a checkout of the
+  CellMate quantification library. With Docker, its Cython extension
+  builds itself automatically inside the container on first start (see
+  above). Without Docker, **it must already be built for this machine's
+  own Python version** (a `.so` built elsewhere won't load if the Python
+  version differs) -- `pip install Cython` then `python3 setup.py
+  build_ext --inplace` in `cellmate/image_measure/measure/`. Without this
+  set, quantification features return a clear error but everything else
+  still works.
+- `SAM_SERVICE_URL` / `PANOPTIC_SERVICE_URL` (plain envs only -- Docker
+  Compose wires these up automatically via container names) can usually
+  stay as `http://localhost:8100` / `:8200` -- only change these if you're
+  running those services on a different machine than the backend.
 
 Any of the above left unset degrades gracefully rather than crashing:
-without `PANOPTIC_REPO_PATH`/`PANOPTIC_MODEL_DIR`, `panoptic_service`
-starts but `/health` reports why it can't load, and the backend falls back
-to a classical-CV placeholder for auto-segmentation; same idea for SAM and
+without the panoptic repo/model dir, `panoptic_service` starts but
+`/health` reports why it can't load, and the backend falls back to a
+classical-CV placeholder for auto-segmentation; same idea for SAM and
 CellMate.
 
 ### Accessing it from another machine (by IP)
 
-`scripts/run_all.sh` already binds every service to `0.0.0.0` and prints
-the URL to use (`http://<this-server-ip>:5173`). Only port **5173** needs
-to be reachable from wherever you're connecting from -- the frontend dev
-server proxies `/api/*` to the backend internally, so the other three ports
-(8000/8100/8200) don't need to be open through any firewall. Check the
-server's own IP with `hostname -I` if it's not obvious (e.g. it changed, or
-you're on a different network).
+Either option only needs port **5173** reachable from wherever you're
+connecting from -- the frontend dev server proxies `/api/*` to the backend
+internally, so the other three ports (8000/8100/8200) don't need to be
+open through any firewall (Docker Compose doesn't even publish them to the
+host at all by default -- see `docker-compose.yml`). `scripts/run_all.sh`
+binds every service to `0.0.0.0` and prints the URL to use
+(`http://<this-server-ip>:5173`); Docker Compose's `frontend` service does
+the same via its `ports:` mapping. Check the server's own IP with
+`hostname -I` if it's not obvious (e.g. it changed, or you're on a
+different network).
 
 ## Trying it out
 

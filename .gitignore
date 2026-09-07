@@ -21,9 +21,11 @@ frontend/dist/
 .DS_Store
 .claude/
 
-# Local machine config (see .env.example) and scripts/run_all.sh's
-# logs/PIDs -- none of this is meant to be shared between machines
+# Local machine config (see .env.example / .env.docker.example) and
+# scripts/run_all.sh's logs/PIDs -- none of this is meant to be shared
+# between machines
 .env
+.env.docker
 logs/
 .run/
 

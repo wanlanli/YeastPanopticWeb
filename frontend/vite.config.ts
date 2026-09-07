@@ -5,9 +5,13 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Same-machine default; override for Docker Compose, where "localhost"
+    // from inside the frontend container wouldn't reach a separate backend
+    // container -- there it's set to the backend service's container name
+    // (e.g. http://backend:8000, see docker-compose.yml).
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:8000',
         changeOrigin: true,
       },
     },
