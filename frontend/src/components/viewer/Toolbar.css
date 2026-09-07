@@ -110,6 +110,17 @@
   animation: saved-indicator-fade 1.6s ease-out;
 }
 
+.segment-error-text {
+  font-size: 12px;
+  color: #ff8a8a;
+  font-weight: 600;
+  padding: 0 4px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @keyframes saved-indicator-fade {
   0% {
     opacity: 0;

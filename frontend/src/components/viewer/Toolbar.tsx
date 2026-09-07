@@ -118,8 +118,19 @@ export function Toolbar() {
   );
   const batchStopRef = useRef(false);
   const autoSegmentAbortRef = useRef<AbortController | null>(null);
+  const [segmentError, setSegmentError] = useState<string | null>(null);
+  const segmentErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (segmentErrorTimeoutRef.current) clearTimeout(segmentErrorTimeoutRef.current);
+  }, []);
   const { undo, redo, canUndo, canRedo } = useUndoRedo();
   const { hasPendingDraft, saveCurrent, refineTarget } = useDraftActions();
+
+  function showSegmentError(message: string) {
+    if (segmentErrorTimeoutRef.current) clearTimeout(segmentErrorTimeoutRef.current);
+    setSegmentError(message);
+    segmentErrorTimeoutRef.current = setTimeout(() => setSegmentError(null), 5000);
+  }
 
   /** Run the panoptic model on one frame and create a polygon per detected
    * instance, keeping instance numbers (the `1000 * class + instance` label
@@ -158,7 +169,14 @@ export function Toolbar() {
       for (const p of created) upsertPolygon(p);
       if (created.length > 0) pushAction({ type: 'createMany', polygons: created });
     } catch (err) {
-      if (!(err instanceof DOMException && err.name === 'AbortError')) throw err;
+      // AbortError means the user hit Stop -- not a failure, nothing to show.
+      // Anything else (e.g. the model service being briefly unreachable)
+      // used to fail completely silently here -- the spinner just vanished
+      // with no indication anything went wrong, which read as the feature
+      // being broken rather than one request having failed.
+      if (!(err instanceof DOMException && err.name === 'AbortError')) {
+        showSegmentError(err instanceof Error ? err.message : 'Auto-segment failed');
+      }
     } finally {
       autoSegmentAbortRef.current = null;
       setAutoSegmenting(false);
@@ -373,6 +391,7 @@ export function Toolbar() {
           )}
         </div>
       )}
+      {segmentError && <span className="segment-error-text">{segmentError}</span>}
       <div className="toolbar-spacer" />
       {justSaved && <span className="saved-indicator">✓ Saved</span>}
       <IconButton
