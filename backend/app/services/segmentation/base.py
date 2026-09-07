@@ -28,8 +28,19 @@ class SegmentationModel(ABC):
 
 class AutoSegmentationModel(ABC):
     @abstractmethod
-    def predict_frame(self, image: np.ndarray) -> list[dict]:
+    def predict_frame(
+        self,
+        image: np.ndarray,
+        score_threshold: float | None = None,
+        instance_threshold: float | None = None,
+        area_threshold: int | None = None,
+        keep_border: bool = False,
+    ) -> list[dict]:
         """Given a grayscale/RGB image, detect every instance in it (no
         point prompt). Returns a list of
-        {"class_id": int, "class_name": str, "points": [[x, y], ...], "confidence": float}."""
+        {"class_id": int, "class_name": str, "points": [[x, y], ...], "confidence": float}.
+
+        score_threshold/instance_threshold/area_threshold/keep_border are
+        user-adjustable filtering knobs (see the Advanced Settings panel);
+        None means "use this model's own default"."""
         raise NotImplementedError

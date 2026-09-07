@@ -4,6 +4,15 @@ export interface Project {
   created_at: string;
 }
 
+/** Auto-segment (panoptic model) filtering knobs -- see the "Advanced
+ * Settings" panel next to Auto-Segment Frame / Segment All Frames. */
+export interface SegmentSettings {
+  scoreThreshold: number;
+  instanceThreshold: number;
+  areaThreshold: number;
+  keepBorderCells: boolean;
+}
+
 export interface Series {
   id: number;
   project_id: number;

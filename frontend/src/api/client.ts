@@ -4,6 +4,7 @@ import type {
   PolygonAnnotation,
   Project,
   QuantificationDataset,
+  SegmentSettings,
   Series,
   SeriesTrackingMap,
   TrackingTree,
@@ -115,10 +116,21 @@ export const api = {
       `/api/series/${seriesId}/frame/${frameIndex}/predict-point`,
       { method: 'POST', body: JSON.stringify({ points }) },
     ),
-  predictFrame: (seriesId: number, frameIndex: number) =>
-    request<{
+  predictFrame: (seriesId: number, frameIndex: number, settings?: SegmentSettings) => {
+    const params = new URLSearchParams();
+    if (settings) {
+      params.set('score_threshold', String(settings.scoreThreshold));
+      params.set('instance_threshold', String(settings.instanceThreshold));
+      params.set('area_threshold', String(settings.areaThreshold));
+      params.set('keep_border', String(settings.keepBorderCells));
+    }
+    const qs = params.toString();
+    return request<{
       predictions: { class_id: number; class_name: string; points: [number, number][]; confidence: number }[];
-    }>(`/api/series/${seriesId}/frame/${frameIndex}/predict-frame`, { method: 'POST' }),
+    }>(`/api/series/${seriesId}/frame/${frameIndex}/predict-frame${qs ? `?${qs}` : ''}`, {
+      method: 'POST',
+    });
+  },
 
   // Quantification
   listDatasets: (projectId: number) =>

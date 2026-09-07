@@ -23,11 +23,16 @@ import io
 import logging
 
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image
 from pydantic import BaseModel
 
-from model_handler import ModelHandler
+from model_handler import (
+    AREA_THRESHOLD,
+    INSTANCE_SCORE_THRESHOLD,
+    SCORE_THRESHOLD,
+    ModelHandler,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -77,7 +82,16 @@ def _to_uint8_rgb(image: Image.Image) -> np.ndarray:
 
 
 @app.post("/predict-frame", response_model=FramePredictResult)
-async def predict_frame(image: UploadFile = File(...)):
+async def predict_frame(
+    image: UploadFile = File(...),
+    score_threshold: float = Form(SCORE_THRESHOLD),
+    instance_threshold: float = Form(INSTANCE_SCORE_THRESHOLD),
+    area_threshold: int = Form(AREA_THRESHOLD),
+    keep_border: bool = Form(False),
+):
+    """`score_threshold`/`instance_threshold`/`area_threshold`/`keep_border`
+    are per-request overrides of this service's own filtering defaults --
+    see the "Advanced Settings" panel next to Auto-Segment Frame in the app."""
     if _model is None:
         raise HTTPException(503, f"Model not loaded: {_load_error}")
 
@@ -87,5 +101,11 @@ async def predict_frame(image: UploadFile = File(...)):
         raise HTTPException(400, f"Could not decode image: {exc}") from exc
 
     rgb = _to_uint8_rgb(pil_image)
-    predictions = _model.predict_frame(rgb)
+    predictions = _model.predict_frame(
+        rgb,
+        score_threshold=score_threshold,
+        instance_threshold=instance_threshold,
+        area_threshold=area_threshold,
+        keep_border=keep_border,
+    )
     return FramePredictResult(predictions=predictions)

@@ -23,7 +23,18 @@ CELL_CLASS_ID = 1
 
 
 class ThresholdBlobModel(AutoSegmentationModel):
-    def predict_frame(self, image: np.ndarray) -> list[dict]:
+    def predict_frame(
+        self,
+        image: np.ndarray,
+        score_threshold: float | None = None,
+        instance_threshold: float | None = None,
+        area_threshold: int | None = None,
+        keep_border: bool = False,
+    ) -> list[dict]:
+        # score_threshold/instance_threshold don't apply here -- every blob
+        # gets confidence=1.0, there's no per-instance model score to filter on.
+        min_area = area_threshold if area_threshold is not None else MIN_AREA
+
         gray = self._to_gray(image)
         threshold = threshold_otsu(gray)
         binary = gray > threshold
@@ -35,9 +46,13 @@ class ThresholdBlobModel(AutoSegmentationModel):
         labeled = label(binary)
         results = []
         for region in regionprops(labeled):
-            if region.area < MIN_AREA:
+            if region.area < min_area:
                 continue
             mask = labeled == region.label
+            if not keep_border and (
+                mask[0, :].any() or mask[-1, :].any() or mask[:, 0].any() or mask[:, -1].any()
+            ):
+                continue  # touches the frame edge -- likely truncated
             polygon = mask_to_polygon(mask)
             if polygon is None:
                 continue

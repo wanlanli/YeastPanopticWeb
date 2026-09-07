@@ -97,7 +97,14 @@ class ModelHandler:
 
         self.predictor = Predictor(cfg)
 
-    def predict_frame(self, rgb: np.ndarray) -> list[dict]:
+    def predict_frame(
+        self,
+        rgb: np.ndarray,
+        score_threshold: float = SCORE_THRESHOLD,
+        instance_threshold: float = INSTANCE_SCORE_THRESHOLD,
+        area_threshold: int = AREA_THRESHOLD,
+        keep_border: bool = False,
+    ) -> list[dict]:
         prediction_output = self.predictor(rgb)
         instances = prediction_output["instances"]
 
@@ -110,13 +117,15 @@ class ModelHandler:
         for pred_mask, score, instance_score, panoptic_label in zip(
             pred_masks, scores, instance_scores, panoptic_labels
         ):
-            if score < SCORE_THRESHOLD or instance_score < INSTANCE_SCORE_THRESHOLD:
+            if score < score_threshold or instance_score < instance_threshold:
                 continue
-            if pred_mask[0, :].any() or pred_mask[-1, :].any() or pred_mask[:, 0].any() or pred_mask[:, -1].any():
+            if not keep_border and (
+                pred_mask[0, :].any() or pred_mask[-1, :].any() or pred_mask[:, 0].any() or pred_mask[:, -1].any()
+            ):
                 continue  # touches the frame edge -- likely truncated
 
             mask = largest_component(pred_mask)
-            if mask.sum() < AREA_THRESHOLD:
+            if mask.sum() < area_threshold:
                 continue
 
             polygon = mask_to_polygon(mask)

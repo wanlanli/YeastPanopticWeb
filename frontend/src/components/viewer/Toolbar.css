@@ -150,3 +150,66 @@
   display: flex;
   justify-content: flex-end;
 }
+
+.advanced-settings-wrap {
+  position: relative;
+}
+
+.advanced-settings-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  background: #1e1e24;
+  border: 1px solid #3a3a45;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.advanced-settings-panel label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: #ccc;
+  white-space: nowrap;
+}
+
+.advanced-settings-panel input[type='number'] {
+  width: 70px;
+  background: #2a2a33;
+  border: 1px solid #444;
+  color: #eee;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.advanced-settings-checkbox {
+  justify-content: flex-start !important;
+}
+
+.advanced-settings-checkbox input {
+  order: -1;
+}
+
+.advanced-settings-reset {
+  background: #2a2a33;
+  border: 1px solid #444;
+  color: #eee;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.advanced-settings-reset:hover {
+  background: #3a3a45;
+}

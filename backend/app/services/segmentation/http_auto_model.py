@@ -17,12 +17,27 @@ class HttpAutoSegmentationModel(AutoSegmentationModel):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
-    def predict_frame(self, image: np.ndarray) -> list[dict]:
+    def predict_frame(
+        self,
+        image: np.ndarray,
+        score_threshold: float | None = None,
+        instance_threshold: float | None = None,
+        area_threshold: int | None = None,
+        keep_border: bool = False,
+    ) -> list[dict]:
         png_bytes = image_io.render_frame_png(image)
+        data = {"keep_border": str(keep_border)}
+        if score_threshold is not None:
+            data["score_threshold"] = str(score_threshold)
+        if instance_threshold is not None:
+            data["instance_threshold"] = str(instance_threshold)
+        if area_threshold is not None:
+            data["area_threshold"] = str(area_threshold)
         try:
             resp = requests.post(
                 f"{self.base_url}/predict-frame",
                 files={"image": ("frame.png", png_bytes, "image/png")},
+                data=data,
                 timeout=self.timeout,
             )
             resp.raise_for_status()

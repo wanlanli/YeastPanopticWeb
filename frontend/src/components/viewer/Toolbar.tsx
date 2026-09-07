@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type { PolygonAnnotation } from '../../api/types';
-import { useViewerStore, type Tool } from '../../store/useViewerStore';
+import { DEFAULT_SEGMENT_SETTINGS, useViewerStore, type Tool } from '../../store/useViewerStore';
 import { BufferBar } from './BufferBar';
 import { CLASS_IDS, classDisplayName, classFromLabel, colorForClass, textColorForClass } from './colorByClass';
 import { useDraftActions } from './useDraftActions';
@@ -52,6 +52,9 @@ export function Toolbar() {
   const pushAction = useViewerStore((s) => s.pushAction);
   const promptClassId = useViewerStore((s) => s.promptClassId);
   const setPromptClassId = useViewerStore((s) => s.setPromptClassId);
+  const segmentSettings = useViewerStore((s) => s.segmentSettings);
+  const setSegmentSettings = useViewerStore((s) => s.setSegmentSettings);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const lastSavedAt = useViewerStore((s) => s.lastSavedAt);
   const markSaved = useViewerStore((s) => s.markSaved);
   const [justSaved, setJustSaved] = useState(false);
@@ -72,7 +75,7 @@ export function Toolbar() {
     frameIdx: number,
     existing: PolygonAnnotation[],
   ): Promise<PolygonAnnotation[]> {
-    const { predictions } = await api.predictFrame(seriesId, frameIdx);
+    const { predictions } = await api.predictFrame(seriesId, frameIdx, segmentSettings);
     const nextInstance = new Map<number, number>();
     for (const p of existing) {
       const classId = classFromLabel(p.label);
@@ -139,6 +142,18 @@ export function Toolbar() {
   function handleStopBatch() {
     batchStopRef.current = true;
   }
+
+  useEffect(() => {
+    if (!showAdvanced) return;
+    const close = () => setShowAdvanced(false);
+    const onKeyDown = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    window.addEventListener('click', close);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showAdvanced]);
 
   // Flash "Saved" whenever anything actually persists -- create/update/
   // delete, undo/redo, or an explicit Save/Ctrl+S/auto-save -- since most
@@ -226,6 +241,73 @@ export function Toolbar() {
         >
           Segment All Frames
         </button>
+      )}
+      {series && (
+        <div className="advanced-settings-wrap">
+          <button
+            className={showAdvanced ? 'active' : ''}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowAdvanced((v) => !v);
+            }}
+            title="Auto-segment filtering settings (score/confidence/area thresholds, border cells)"
+          >
+            Advanced Settings ⚙
+          </button>
+          {showAdvanced && (
+            <div className="advanced-settings-panel" onClick={(e) => e.stopPropagation()}>
+              <label>
+                Score threshold
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={1}
+                  value={segmentSettings.scoreThreshold}
+                  onChange={(e) => setSegmentSettings({ scoreThreshold: Number(e.target.value) })}
+                  title="Minimum overall detection confidence to keep (0-1)"
+                />
+              </label>
+              <label>
+                Instance (trust) threshold
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={1}
+                  value={segmentSettings.instanceThreshold}
+                  onChange={(e) => setSegmentSettings({ instanceThreshold: Number(e.target.value) })}
+                  title="Minimum instance-center confidence to keep (0-1) -- how much to trust this is a real, separate cell"
+                />
+              </label>
+              <label>
+                Min area (px)
+                <input
+                  type="number"
+                  step="1"
+                  min={0}
+                  value={segmentSettings.areaThreshold}
+                  onChange={(e) => setSegmentSettings({ areaThreshold: Number(e.target.value) })}
+                  title="Drop detections smaller than this many pixels"
+                />
+              </label>
+              <label className="advanced-settings-checkbox">
+                <input
+                  type="checkbox"
+                  checked={segmentSettings.keepBorderCells}
+                  onChange={(e) => setSegmentSettings({ keepBorderCells: e.target.checked })}
+                />
+                Keep cells touching the frame edge
+              </label>
+              <button
+                className="advanced-settings-reset"
+                onClick={() => setSegmentSettings(DEFAULT_SEGMENT_SETTINGS)}
+              >
+                Reset to defaults
+              </button>
+            </div>
+          )}
+        </div>
       )}
       {autoSegmenting && (
         <div className="toolbar-buffer">

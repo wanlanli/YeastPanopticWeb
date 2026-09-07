@@ -134,8 +134,16 @@ def predict_point(
 def predict_frame(
     series_id: int,
     frame_index: int,
+    score_threshold: float | None = None,
+    instance_threshold: float | None = None,
+    area_threshold: int | None = None,
+    keep_border: bool = False,
     db: Session = Depends(get_db),
 ):
+    """score_threshold/instance_threshold/area_threshold/keep_border are
+    user-adjustable filtering knobs (see the app's Advanced Settings panel
+    next to Auto-Segment Frame); omitted ones fall back to the model's own
+    defaults."""
     series = db.get(ImageSeries, series_id)
     if not series:
         raise HTTPException(404, "Series not found")
@@ -148,7 +156,13 @@ def predict_frame(
 
     model = get_auto_model()
     try:
-        predictions = model.predict_frame(arr)
+        predictions = model.predict_frame(
+            arr,
+            score_threshold=score_threshold,
+            instance_threshold=instance_threshold,
+            area_threshold=area_threshold,
+            keep_border=keep_border,
+        )
     except SegmentationServiceError as exc:
         raise HTTPException(502, str(exc)) from exc
     return FramePredictResult(predictions=predictions)

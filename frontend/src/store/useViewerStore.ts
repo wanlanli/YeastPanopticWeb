@@ -1,7 +1,15 @@
 import { create } from 'zustand';
-import type { PolygonAnnotation, Series, SeriesTrackingMap } from '../api/types';
+import type { PolygonAnnotation, SegmentSettings, Series, SeriesTrackingMap } from '../api/types';
 
 export type RightPanelTab = 'labels' | 'tracking' | 'quantification';
+
+/** Defaults match panoptic_service's own built-in defaults. */
+export const DEFAULT_SEGMENT_SETTINGS: SegmentSettings = {
+  scoreThreshold: 0.1,
+  instanceThreshold: 0.6,
+  areaThreshold: 300,
+  keepBorderCells: false,
+};
 
 export type Tool = 'select' | 'draw' | 'point-prompt';
 
@@ -61,6 +69,9 @@ interface ViewerState {
   /** original filename per frame, for folder/upload series (one file per
    * frame); null for multipage_tiff series or before fetched. */
   frameNames: string[] | null;
+  /** user-adjustable auto-segment filtering settings, session-scoped (not
+   * reset when switching series/frames) -- see Toolbar's Advanced Settings */
+  segmentSettings: SegmentSettings;
 
   setSeries: (series: Series | null) => void;
   setFrameIndex: (index: number) => void;
@@ -92,6 +103,7 @@ interface ViewerState {
   setRightPanelTab: (tab: RightPanelTab) => void;
   setSeriesTracking: (tracking: SeriesTrackingMap | null) => void;
   setFrameNames: (names: string[] | null) => void;
+  setSegmentSettings: (settings: Partial<SegmentSettings>) => void;
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => ({
@@ -117,6 +129,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   rightPanelTab: 'labels',
   seriesTracking: null,
   frameNames: null,
+  segmentSettings: DEFAULT_SEGMENT_SETTINGS,
 
   setSeries: (series) =>
     set({
@@ -198,4 +211,6 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   setRightPanelTab: (rightPanelTab) => set({ rightPanelTab }),
   setSeriesTracking: (seriesTracking) => set({ seriesTracking }),
   setFrameNames: (frameNames) => set({ frameNames }),
+  setSegmentSettings: (partial) =>
+    set((state) => ({ segmentSettings: { ...state.segmentSettings, ...partial } })),
 }));
