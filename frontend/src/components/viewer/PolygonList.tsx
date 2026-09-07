@@ -27,6 +27,13 @@ export function PolygonList() {
   const upsertPolygon = useViewerStore((s) => s.upsertPolygon);
   const removePolygon = useViewerStore((s) => s.removePolygon);
   const pushAction = useViewerStore((s) => s.pushAction);
+  const frameIndex = useViewerStore((s) => s.frameIndex);
+  const seriesTracking = useViewerStore((s) => s.seriesTracking);
+
+  const frameTrackIds = seriesTracking?.frame_track_map[String(frameIndex)];
+  function trackIdFor(p: PolygonAnnotation): number | undefined {
+    return frameTrackIds?.[String(Number(p.label))];
+  }
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -147,6 +154,11 @@ export function PolygonList() {
                 title="Double-click to rename"
               >
                 {p.label || `#${p.id}`}
+              </span>
+            )}
+            {trackIdFor(p) !== undefined && (
+              <span className="polygon-track-badge" title="Stable track id (from computed tracking)">
+                track {trackIdFor(p)}
               </span>
             )}
             <button

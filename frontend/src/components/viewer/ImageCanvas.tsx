@@ -32,6 +32,7 @@ export function ImageCanvas() {
   const resetViewToken = useViewerStore((s) => s.resetViewToken);
   const vmin = useViewerStore((s) => s.vmin);
   const vmax = useViewerStore((s) => s.vmax);
+  const viewChannel = useViewerStore((s) => s.viewChannel);
   const tool = useViewerStore((s) => s.tool);
   const polygons = useViewerStore((s) => s.polygons);
   const setPolygons = useViewerStore((s) => s.setPolygons);
@@ -72,7 +73,13 @@ export function ImageCanvas() {
   } | null>(null);
 
   const imageUrl = series
-    ? api.frameUrl(series.id, frameIndex, vmin ?? undefined, vmax ?? undefined)
+    ? api.frameUrl(
+        series.id,
+        frameIndex,
+        vmin ?? undefined,
+        vmax ?? undefined,
+        series.channel_count > 1 ? viewChannel : undefined,
+      )
     : null;
   const image = useHtmlImage(imageUrl);
 

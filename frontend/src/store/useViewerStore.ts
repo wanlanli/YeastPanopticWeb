@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import type { PolygonAnnotation, Series } from '../api/types';
+import type { PolygonAnnotation, Series, SeriesTrackingMap } from '../api/types';
+
+export type RightPanelTab = 'labels' | 'tracking';
 
 export type Tool = 'select' | 'draw' | 'point-prompt';
 
@@ -18,6 +20,9 @@ export type PolygonAction =
 interface ViewerState {
   series: Series | null;
   frameIndex: number;
+  /** which imaging channel is currently displayed (view-only; segmentation
+   * always uses series.dic_channel_index regardless of this) */
+  viewChannel: number;
   vmin: number | null;
   vmax: number | null;
   tool: Tool;
@@ -46,8 +51,17 @@ interface ViewerState {
    * at its initial zoom -- see ContrastControls' "Fit to Window" button */
   resetViewToken: number;
 
+  /** which right-panel tab is showing: the polygon/label list, or the
+   * tracking lineage tree (movies only -- see RightPanel) */
+  rightPanelTab: RightPanelTab;
+  /** the current series' latest computed tracking (frame -> original label
+   * -> stable track id), fetched non-destructively -- polygon labels
+   * themselves are never rewritten. Null until fetched / if none exists. */
+  seriesTracking: SeriesTrackingMap | null;
+
   setSeries: (series: Series | null) => void;
   setFrameIndex: (index: number) => void;
+  setViewChannel: (channel: number) => void;
   setContrast: (vmin: number | null, vmax: number | null) => void;
   setTool: (tool: Tool) => void;
   setPolygons: (polygons: PolygonAnnotation[]) => void;
@@ -72,11 +86,14 @@ interface ViewerState {
   clearHistory: () => void;
   markSaved: () => void;
   requestResetView: () => void;
+  setRightPanelTab: (tab: RightPanelTab) => void;
+  setSeriesTracking: (tracking: SeriesTrackingMap | null) => void;
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => ({
   series: null,
   frameIndex: 0,
+  viewChannel: 0,
   vmin: null,
   vmax: null,
   tool: 'select',
@@ -93,9 +110,21 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   future: [],
   lastSavedAt: null,
   resetViewToken: 0,
+  rightPanelTab: 'labels',
+  seriesTracking: null,
 
   setSeries: (series) =>
-    set({ series, frameIndex: 0, polygons: [], selectedPolygonId: null, history: [], future: [] }),
+    set({
+      series,
+      frameIndex: 0,
+      viewChannel: series?.dic_channel_index ?? 0,
+      polygons: [],
+      selectedPolygonId: null,
+      history: [],
+      future: [],
+      seriesTracking: null,
+      rightPanelTab: 'labels',
+    }),
   setFrameIndex: (frameIndex) =>
     set((state) => ({
       frameIndex: state.series
@@ -105,6 +134,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       history: [],
       future: [],
     })),
+  setViewChannel: (viewChannel) => set({ viewChannel }),
   setContrast: (vmin, vmax) => set({ vmin, vmax }),
   setTool: (tool) =>
     set((state) => ({
@@ -159,4 +189,6 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   clearHistory: () => set({ history: [], future: [] }),
   markSaved: () => set({ lastSavedAt: Date.now() }),
   requestResetView: () => set((state) => ({ resetViewToken: state.resetViewToken + 1 })),
+  setRightPanelTab: (rightPanelTab) => set({ rightPanelTab }),
+  setSeriesTracking: (seriesTracking) => set({ seriesTracking }),
 }));

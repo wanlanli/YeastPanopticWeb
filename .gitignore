@@ -23,6 +23,8 @@ frontend/dist/
 
 # Large local test fixtures (not meant for version control)
 sample_data/
+/*.tif
+/*.tiff
 
 # Reference-only dump of CVAT's serverless model functions (not part of
 # this project's source; kept locally for adapting model integration code)

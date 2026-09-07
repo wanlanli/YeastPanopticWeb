@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import type { Series } from '../api/types';
+import { ChannelSelector } from '../components/viewer/ChannelSelector';
 import { ContrastControls } from '../components/viewer/ContrastControls';
 import { FrameNavigator } from '../components/viewer/FrameNavigator';
 import { ImageCanvas } from '../components/viewer/ImageCanvas';
-import { PolygonList } from '../components/viewer/PolygonList';
+import { RightPanel } from '../components/viewer/RightPanel';
 import { Toolbar } from '../components/viewer/Toolbar';
 import { useViewerStore } from '../store/useViewerStore';
 import './Viewer.css';
@@ -173,10 +174,11 @@ export function Viewer() {
 
       <main className="viewer-main">
         <Toolbar />
+        <ChannelSelector />
         <ContrastControls />
         <div className="viewer-canvas-row">
           <ImageCanvas />
-          <PolygonList />
+          <RightPanel />
         </div>
         <FrameNavigator />
       </main>

@@ -14,6 +14,12 @@ export interface Series {
   height: number;
   dtype: string;
   channels: number;
+  /** number of imaging channels (e.g. DIC/GFP/...), distinct from `channels`
+   * above which is per-pixel (RGB etc) */
+  channel_count: number;
+  channel_names: string[] | null;
+  /** which channel segmentation models read; null if not yet chosen */
+  dic_channel_index: number | null;
 }
 
 export interface PolygonAnnotation {
@@ -24,6 +30,12 @@ export interface PolygonAnnotation {
   label: string;
   source: 'manual' | 'model';
   updated_at: string;
+}
+
+export interface SeriesTrackingMap {
+  dataset_id: number | null;
+  /** {frame_index (string) -> {original_polygon_label (string) -> track_id}} */
+  frame_track_map: Record<string, Record<string, number>>;
 }
 
 export interface QuantificationDataset {

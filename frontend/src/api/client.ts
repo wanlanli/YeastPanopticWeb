@@ -4,6 +4,7 @@ import type {
   Project,
   QuantificationDataset,
   Series,
+  SeriesTrackingMap,
   TrackingTree,
   TsneResult,
 } from './types';
@@ -48,13 +49,21 @@ export const api = {
     Array.from(files).forEach((f) => form.append('files', f));
     return request<Series>('/api/series/upload', { method: 'POST', body: form });
   },
-  frameUrl: (seriesId: number, frameIndex: number, vmin?: number, vmax?: number) => {
+  frameUrl: (seriesId: number, frameIndex: number, vmin?: number, vmax?: number, channel?: number) => {
     const params = new URLSearchParams();
     if (vmin !== undefined) params.set('vmin', String(vmin));
     if (vmax !== undefined) params.set('vmax', String(vmax));
+    if (channel !== undefined) params.set('channel', String(channel));
     const qs = params.toString();
     return `/api/series/${seriesId}/frame/${frameIndex}${qs ? `?${qs}` : ''}`;
   },
+  setSeriesChannel: (seriesId: number, dicChannelIndex: number) =>
+    request<Series>(`/api/series/${seriesId}/channel`, {
+      method: 'PATCH',
+      body: JSON.stringify({ dic_channel_index: dicChannelIndex }),
+    }),
+  getSeriesTracking: (seriesId: number) =>
+    request<SeriesTrackingMap>(`/api/series/${seriesId}/tracking`),
   frameMaskUrl: (seriesId: number, frameIndex: number) =>
     `/api/series/${seriesId}/frame/${frameIndex}/mask`,
   seriesMaskUrl: (seriesId: number) => `/api/series/${seriesId}/mask`,
@@ -134,4 +143,10 @@ export const api = {
     if (colorBy) params.set('color_by', colorBy);
     return request<TsneResult>(`/api/quantification/${datasetId}/tsne?${params}`);
   },
+  datasetDownloadUrl: (datasetId: number) => `/api/quantification/${datasetId}/download`,
+  computeQuantification: (seriesId: number, fillGaps = false) =>
+    request<QuantificationDataset[]>('/api/quantification/compute', {
+      method: 'POST',
+      body: JSON.stringify({ series_id: seriesId, fill_gaps: fillGaps }),
+    }),
 };

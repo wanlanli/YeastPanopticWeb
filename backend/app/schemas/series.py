@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict
+import json
+
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class SeriesRegisterPath(BaseModel):
@@ -19,3 +21,17 @@ class SeriesOut(BaseModel):
     height: int
     dtype: str
     channels: int
+    channel_count: int
+    channel_names: list[str] | None
+    dic_channel_index: int | None
+
+    @field_validator("channel_names", mode="before")
+    @classmethod
+    def _parse_channel_names(cls, v):
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
+
+
+class SeriesChannelUpdate(BaseModel):
+    dic_channel_index: int

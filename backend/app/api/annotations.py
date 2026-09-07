@@ -113,7 +113,9 @@ def predict_point(
     if not series:
         raise HTTPException(404, "Series not found")
     try:
-        arr = image_io.read_frame(series.source_type, series.path, frame_index)
+        arr = image_io.read_frame(
+            series.source_type, series.path, frame_index, series.dic_channel_index or 0
+        )
     except IndexError as exc:
         raise HTTPException(404, str(exc)) from exc
 
@@ -138,7 +140,9 @@ def predict_frame(
     if not series:
         raise HTTPException(404, "Series not found")
     try:
-        arr = image_io.read_frame(series.source_type, series.path, frame_index)
+        arr = image_io.read_frame(
+            series.source_type, series.path, frame_index, series.dic_channel_index or 0
+        )
     except IndexError as exc:
         raise HTTPException(404, str(exc)) from exc
 

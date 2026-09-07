@@ -113,6 +113,17 @@
   font-size: 12px;
 }
 
+.polygon-track-badge {
+  flex-shrink: 0;
+  background: #1e2f4a;
+  color: #7fb2ff;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .polygon-delete-btn {
   background: none;
   border: none;

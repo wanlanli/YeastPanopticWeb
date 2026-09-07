@@ -28,3 +28,10 @@ SAM_SERVICE_URL = os.environ.get("SAM_SERVICE_URL", "")
 # panoptic model; left unset, the app falls back to a classical-CV
 # placeholder (Otsu threshold + connected components).
 PANOPTIC_SERVICE_URL = os.environ.get("PANOPTIC_SERVICE_URL", "")
+
+# Local checkout of the CellMate library (geometry/tracking/intensity
+# quantification), used by app.services.quantification_compute. Not
+# vendored into this repo -- point it at wherever CellMate lives, e.g.
+# /home/user/project/CellMate. Its Cython extensions must be built for
+# this backend's Python version first (see README).
+CELLMATE_PATH = os.environ.get("CELLMATE_PATH", "")

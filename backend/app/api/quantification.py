@@ -1,19 +1,24 @@
+import json
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.config import QUANT_DIR
 from app.db import get_db
 from app.models.quantification import QuantificationDataset
+from app.models.series import ImageSeries
 from app.schemas.quantification import (
+    ComputeQuantificationRequest,
     FeatureTablePage,
     QuantificationDatasetOut,
     TrackingTree,
     TsneResult,
 )
 from app.services import quantification as quant_service
+from app.services import quantification_compute
 
 router = APIRouter(prefix="/api/quantification", tags=["quantification"])
 
@@ -64,11 +69,94 @@ async def upload_dataset(
     return dataset
 
 
+@router.post("/compute", response_model=list[QuantificationDatasetOut])
+def compute_quantification(
+    body: ComputeQuantificationRequest, db: Session = Depends(get_db)
+):
+    """Compute geometry, per-channel intensity, and (for movies) cross-frame
+    tracking from a series' saved polygons, and register the results as
+    quantification datasets -- the same kind a user could otherwise upload
+    by hand, so they show up in the feature table / t-SNE / tracking views
+    immediately."""
+    series = db.get(ImageSeries, body.series_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+
+    try:
+        result = quantification_compute.compute_series_quantification(
+            db,
+            series,
+            pixel_size=body.pixel_size,
+            sampling_interval=body.sampling_interval,
+            fill_gaps=body.fill_gaps,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Quantification failed: {exc}") from exc
+
+    created: list[QuantificationDataset] = []
+
+    features_df = result["features"]
+    if not features_df.empty:
+        dest = QUANT_DIR / f"{uuid.uuid4()}.csv"
+        features_df.to_csv(dest, index=False)
+        dataset = QuantificationDataset(
+            project_id=series.project_id,
+            series_id=series.id,
+            name=f"{series.name} -- features",
+            kind="features",
+            file_path=str(dest),
+        )
+        db.add(dataset)
+        db.commit()
+        db.refresh(dataset)
+        created.append(dataset)
+
+    tracking_nodes = result["tracking"]
+    if tracking_nodes:
+        dest = QUANT_DIR / f"{uuid.uuid4()}.json"
+        dest.write_text(
+            json.dumps({"nodes": tracking_nodes, "frame_track_map": result["frame_track_map"]})
+        )
+        dataset = QuantificationDataset(
+            project_id=series.project_id,
+            series_id=series.id,
+            name=f"{series.name} -- tracking",
+            kind="tracking",
+            file_path=str(dest),
+        )
+        db.add(dataset)
+        db.commit()
+        db.refresh(dataset)
+        created.append(dataset)
+
+    if not created:
+        raise HTTPException(
+            400, "No segmented frames found for this series -- segment it first."
+        )
+    return created
+
+
 def _get_dataset(dataset_id: int, db: Session) -> QuantificationDataset:
     dataset = db.get(QuantificationDataset, dataset_id)
     if not dataset:
         raise HTTPException(404, "Dataset not found")
     return dataset
+
+
+@router.get("/{dataset_id}/download")
+def download_dataset(dataset_id: int, db: Session = Depends(get_db)):
+    dataset = _get_dataset(dataset_id, db)
+    path = Path(dataset.file_path)
+    if not path.exists():
+        raise HTTPException(404, "Dataset file missing on disk")
+    safe_name = "".join(c if c.isalnum() or c in " ._-" else "_" for c in dataset.name)
+    return FileResponse(
+        path,
+        filename=f"{safe_name}{path.suffix}",
+        media_type="text/csv" if path.suffix == ".csv" else "application/json",
+    )
 
 
 @router.get("/{dataset_id}/features", response_model=FeatureTablePage)

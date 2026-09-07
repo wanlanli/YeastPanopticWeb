@@ -11,6 +11,9 @@ class QuantificationDataset(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    # Set when this dataset was computed from a series' own segmentation
+    # (see app.services.quantification_compute); null for manual uploads.
+    series_id: Mapped[int | None] = mapped_column(ForeignKey("image_series.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(255))
     # "features" | "tracking"
     kind: Mapped[str] = mapped_column(String(16))

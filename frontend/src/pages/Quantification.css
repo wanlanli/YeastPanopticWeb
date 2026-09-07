@@ -29,10 +29,58 @@
   font-size: 13px;
 }
 
-.quant-upload {
+.quant-upload,
+.quant-compute {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.quant-compute {
+  width: 100%;
+  padding: 8px 10px;
+  background: #14181f;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+}
+
+.quant-compute select {
+  background: #1a1a19;
+  border: 1px solid #383835;
+  color: #eee;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.quant-compute button {
+  background: #3d63dd;
+  border: 1px solid #3d63dd;
+  color: #fff;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quant-compute button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.quant-compute-hint {
+  color: #888;
+  font-size: 11px;
+}
+
+.quant-fill-gaps {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #ccc;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .quant-upload input[type='text'],
@@ -95,6 +143,25 @@
   margin: 0;
   font-size: 14px;
   color: #c3c2b7;
+}
+
+.quant-section-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quant-download-btn {
+  color: #8ab4ff;
+  text-decoration: none;
+  font-size: 12px;
+  border: 1px solid #383835;
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.quant-download-btn:hover {
+  background: #1a1a19;
 }
 
 .quant-section-header select {

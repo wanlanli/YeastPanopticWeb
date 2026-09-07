@@ -51,6 +51,8 @@ def seed_sample_project() -> None:
                 height=meta.height,
                 dtype=meta.dtype,
                 channels=meta.channels,
+                channel_count=meta.channel_count,
+                dic_channel_index=meta.dic_channel_index,
             )
         )
         db.commit()

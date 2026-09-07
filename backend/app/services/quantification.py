@@ -3,6 +3,7 @@ tracking/lineage data) and deriving a t-SNE embedding from them."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,14 @@ def get_feature_page(
 
 
 def build_tracking_tree(file_path: str) -> list[dict[str, Any]]:
+    p = Path(file_path)
+    if p.suffix.lower() == ".json":
+        raw = json.loads(p.read_text())
+        # auto-computed tracking datasets nest {"nodes": [...], "frame_track_map": {...}};
+        # manually uploaded ones are just a flat list of {id, parent_id, ...} records.
+        if isinstance(raw, dict) and "nodes" in raw:
+            return raw["nodes"]
+
     df = load_dataframe(file_path)
     required = {"id", "parent_id"}
     missing = required - set(df.columns)
