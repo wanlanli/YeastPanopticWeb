@@ -116,7 +116,7 @@ export const api = {
       `/api/series/${seriesId}/frame/${frameIndex}/predict-point`,
       { method: 'POST', body: JSON.stringify({ points }) },
     ),
-  predictFrame: (seriesId: number, frameIndex: number, settings?: SegmentSettings) => {
+  predictFrame: (seriesId: number, frameIndex: number, settings?: SegmentSettings, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (settings) {
       params.set('score_threshold', String(settings.scoreThreshold));
@@ -129,6 +129,7 @@ export const api = {
       predictions: { class_id: number; class_name: string; points: [number, number][]; confidence: number }[];
     }>(`/api/series/${seriesId}/frame/${frameIndex}/predict-frame${qs ? `?${qs}` : ''}`, {
       method: 'POST',
+      signal,
     });
   },
 

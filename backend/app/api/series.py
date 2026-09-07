@@ -1,6 +1,8 @@
+import io
 import json
 import shutil
 import uuid
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -315,6 +317,11 @@ def measure_frame(
 
 @router.get("/{series_id}/mask")
 def get_series_mask(series_id: int, db: Session = Depends(get_db)):
+    """Mask export for the whole series, matching the input's own layout:
+    a folder/upload of separate frame files exports one mask file per frame
+    (zipped together), while a single multipage-tiff stack exports one mask
+    stack -- so the output can drop back in next to the source the same way
+    it came out."""
     series = db.get(ImageSeries, series_id)
     if not series:
         raise HTTPException(404, "Series not found")
@@ -323,6 +330,18 @@ def get_series_mask(series_id: int, db: Session = Depends(get_db)):
     for frame_index in range(series.frame_count):
         polygons = _frame_polygons(db, series_id, frame_index)
         frames.append(mask_io.rasterize_polygons(polygons, series.height, series.width))
+
+    if series.source_type in ("folder", "upload"):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for frame_index, mask in enumerate(frames):
+                zf.writestr(f"{_source_stem(series, frame_index)}_mask.tif", mask_io.mask_to_tiff_bytes(mask))
+        filename = f"{_source_stem(series)}_masks.zip"
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     tiff_bytes = mask_io.mask_stack_to_tiff_bytes(frames)
     filename = f"{_source_stem(series)}_mask.tif"

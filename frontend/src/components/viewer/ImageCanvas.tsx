@@ -15,6 +15,13 @@ import './ImageCanvas.css';
 const CLOSE_POLYGON_TOLERANCE_PX = 8; // screen pixels, converted via /scale below
 const AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000;
 
+/** Clamp a point to the image bounds -- clicking past the edge while
+ * drawing (easy to do once zoomed/panned) lands the vertex on the edge
+ * instead of outside the frame. */
+function clampToImage(pt: [number, number], width: number, height: number): [number, number] {
+  return [Math.min(Math.max(pt[0], 0), width), Math.min(Math.max(pt[1], 0), height)];
+}
+
 export function ImageCanvas() {
   const series = useViewerStore((s) => s.series);
   const frameIndex = useViewerStore((s) => s.frameIndex);
@@ -360,17 +367,18 @@ export function ImageCanvas() {
     if (!pt) return;
 
     if (tool === 'draw') {
+      const clamped = clampToImage(pt, series.width, series.height);
       if (draftPoints.length >= 3) {
         // click back on the starting point to close the loop -- deliberate
         // and unambiguous, unlike relying on double-click timing
         const [fx, fy] = draftPoints[0];
         const tolerance = CLOSE_POLYGON_TOLERANCE_PX / transform.scale;
-        if (Math.hypot(pt[0] - fx, pt[1] - fy) <= tolerance) {
+        if (Math.hypot(clamped[0] - fx, clamped[1] - fy) <= tolerance) {
           finishDraft();
           return;
         }
       }
-      setDraftPoints([...draftPoints, pt]);
+      setDraftPoints([...draftPoints, clamped]);
       return;
     }
 

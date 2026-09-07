@@ -17,6 +17,17 @@
   font-size: 13px;
 }
 
+.toolbar-icon-btn.toolbar-icon-btn {
+  padding: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolbar-icon-btn svg {
+  display: block;
+}
+
 .toolbar button:hover:not(:disabled) {
   background: #3a3a45;
 }

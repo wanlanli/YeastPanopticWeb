@@ -13,6 +13,7 @@
     "@tanstack/react-table": "^8.21.3",
     "d3": "^7.9.0",
     "konva": "^10.3.3",
+    "lucide-react": "^1.42.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-konva": "^19.2.6",

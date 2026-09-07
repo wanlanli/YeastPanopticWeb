@@ -1,3 +1,20 @@
+import {
+  Crosshair,
+  Download,
+  Eraser,
+  FileArchive,
+  MousePointer2,
+  PenTool,
+  Redo2,
+  Save,
+  Settings2,
+  Sparkles,
+  SquareStack,
+  Trash,
+  Trash2,
+  Undo2,
+  type LucideIcon,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type { PolygonAnnotation } from '../../api/types';
@@ -16,28 +33,64 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
-const TOOLS: { id: Tool; label: string; hint: string }[] = [
+const TOOLS: { id: Tool; label: string; icon: LucideIcon; hint: string }[] = [
   {
     id: 'select',
     label: 'Select / Edit',
+    icon: MousePointer2,
     hint:
-      'Hover a polygon to select it, drag vertices to move, Alt+click (or double-click) a vertex to delete. ' +
-      'Shift+click a vertex to cut: click to add points, click another vertex to finish there, then pick which ' +
-      'side to keep. Right-click undoes a point, Esc cancels',
+      'Select / Edit — hover a polygon to select it, drag vertices to move, Alt+click (or double-click) a ' +
+      'vertex to delete. Shift+click a vertex to cut: click to add points, click another vertex to finish there, ' +
+      'then pick which side to keep. Right-click undoes a point, Esc cancels',
   },
   {
     id: 'draw',
     label: 'Draw Polygon',
-    hint: 'Click to add vertices, right-click to undo a point, double-click (or Enter) to close, Esc to cancel',
+    icon: PenTool,
+    hint:
+      'Draw Polygon — click to add vertices, right-click to undo a point, double-click (or Enter) to close, ' +
+      'Esc to cancel',
   },
   {
     id: 'point-prompt',
     label: 'Point Prompt',
+    icon: Crosshair,
     hint:
-      'Left-click to include, right-click to exclude, refining the mask live. Enter to confirm, Esc to cancel. ' +
-      'Select a polygon first to refine its shape instead of creating a new one',
+      'Point Prompt — left-click to include, right-click to exclude, refining the mask live. Enter to confirm, ' +
+      'Esc to cancel. Select a polygon first to refine its shape instead of creating a new one',
   },
 ];
+
+/** Icon-only toolbar button -- the icon replaces the label as the button's
+ * visible content, the label/hint text only shows up as a tooltip and
+ * screen-reader label (title + aria-label). */
+function IconButton({
+  icon: Icon,
+  label,
+  title,
+  onClick,
+  disabled,
+  className,
+}: {
+  icon: LucideIcon;
+  label: string;
+  title?: string;
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      className={['toolbar-icon-btn', className].filter(Boolean).join(' ')}
+      onClick={onClick}
+      disabled={disabled}
+      title={title ?? label}
+      aria-label={label}
+    >
+      <Icon size={16} strokeWidth={2} />
+    </button>
+  );
+}
 
 export function Toolbar() {
   const tool = useViewerStore((s) => s.tool);
@@ -64,6 +117,7 @@ export function Toolbar() {
     null,
   );
   const batchStopRef = useRef(false);
+  const autoSegmentAbortRef = useRef<AbortController | null>(null);
   const { undo, redo, canUndo, canRedo } = useUndoRedo();
   const { hasPendingDraft, saveCurrent, refineTarget } = useDraftActions();
 
@@ -74,8 +128,9 @@ export function Toolbar() {
     seriesId: number,
     frameIdx: number,
     existing: PolygonAnnotation[],
+    signal?: AbortSignal,
   ): Promise<PolygonAnnotation[]> {
-    const { predictions } = await api.predictFrame(seriesId, frameIdx, segmentSettings);
+    const { predictions } = await api.predictFrame(seriesId, frameIdx, segmentSettings, signal);
     const nextInstance = new Map<number, number>();
     for (const p of existing) {
       const classId = classFromLabel(p.label);
@@ -95,14 +150,23 @@ export function Toolbar() {
 
   async function handleAutoSegment() {
     if (!series) return;
+    const controller = new AbortController();
+    autoSegmentAbortRef.current = controller;
     setAutoSegmenting(true);
     try {
-      const created = await segmentFrame(series.id, frameIndex, polygons);
+      const created = await segmentFrame(series.id, frameIndex, polygons, controller.signal);
       for (const p of created) upsertPolygon(p);
       if (created.length > 0) pushAction({ type: 'createMany', polygons: created });
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === 'AbortError')) throw err;
     } finally {
+      autoSegmentAbortRef.current = null;
       setAutoSegmenting(false);
     }
+  }
+
+  function handleStopAutoSegment() {
+    autoSegmentAbortRef.current?.abort();
   }
 
   async function handleBatchSegment() {
@@ -197,14 +261,14 @@ export function Toolbar() {
     <>
       <div className="toolbar">
       {TOOLS.map((t) => (
-        <button
+        <IconButton
           key={t.id}
+          icon={t.icon}
+          label={t.label}
+          title={t.hint}
           className={tool === t.id ? 'active' : ''}
           onClick={() => setTool(t.id)}
-          title={t.hint}
-        >
-          {t.label}
-        </button>
+        />
       ))}
       {(tool === 'draw' || (tool === 'point-prompt' && !refineTarget)) && (
         <select
@@ -225,35 +289,35 @@ export function Toolbar() {
         <span className="toolbar-hint-text">Refining polygon #{refineTarget.id}</span>
       )}
       {series && (
-        <button
+        <IconButton
+          icon={Sparkles}
+          label="Auto-Segment Frame"
+          title="Auto-Segment Frame — detect every cell/instance in this frame with the panoptic model"
           onClick={handleAutoSegment}
           disabled={autoSegmenting || batchRunning}
-          title="Detect every cell/instance in this frame with the panoptic model"
-        >
-          Auto-Segment Frame
-        </button>
+        />
       )}
       {series && series.frame_count > 1 && (
-        <button
+        <IconButton
+          icon={SquareStack}
+          label="Segment All Frames"
+          title={`Segment All Frames — run the panoptic model on all ${series.frame_count} frames, one at a time`}
           onClick={handleBatchSegment}
           disabled={autoSegmenting || batchRunning}
-          title={`Run the panoptic model on all ${series.frame_count} frames, one at a time`}
-        >
-          Segment All Frames
-        </button>
+        />
       )}
       {series && (
         <div className="advanced-settings-wrap">
-          <button
+          <IconButton
+            icon={Settings2}
+            label="Advanced Settings"
+            title="Advanced Settings — auto-segment filtering settings (score/confidence/area thresholds, border cells)"
             className={showAdvanced ? 'active' : ''}
             onClick={(e) => {
               e.stopPropagation();
               setShowAdvanced((v) => !v);
             }}
-            title="Auto-segment filtering settings (score/confidence/area thresholds, border cells)"
-          >
-            Advanced Settings ⚙
-          </button>
+          />
           {showAdvanced && (
             <div className="advanced-settings-panel" onClick={(e) => e.stopPropagation()}>
               <label>
@@ -309,30 +373,24 @@ export function Toolbar() {
           )}
         </div>
       )}
-      {autoSegmenting && (
-        <div className="toolbar-buffer">
-          <BufferBar label="Segmenting frame…" />
-        </div>
-      )}
       <div className="toolbar-spacer" />
       {justSaved && <span className="saved-indicator">✓ Saved</span>}
-      <button
-        onClick={handleSaveClick}
+      <IconButton
+        icon={Save}
+        label="Save"
         title={
           hasPendingDraft
-            ? "Save the polygon/mask currently being drawn (same as pressing Enter or Ctrl+S)"
-            : 'Everything is already saved -- every edit persists immediately. Click to confirm, or Ctrl+S'
+            ? 'Save — save the polygon/mask currently being drawn (same as pressing Enter or Ctrl+S)'
+            : 'Save — everything is already saved, every edit persists immediately. Click to confirm, or Ctrl+S'
         }
-      >
-        Save
-      </button>
-      <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">
-        Undo
-      </button>
-      <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">
-        Redo
-      </button>
-      <button
+        onClick={handleSaveClick}
+      />
+      <IconButton icon={Undo2} label="Undo" title="Undo (Ctrl+Z)" onClick={undo} disabled={!canUndo} />
+      <IconButton icon={Redo2} label="Redo" title="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo} />
+      <IconButton
+        icon={Trash2}
+        label="Delete Selected"
+        title="Delete Selected — delete the selected polygon"
         disabled={selectedPolygonId === null}
         onClick={async () => {
           if (selectedPolygonId === null) return;
@@ -341,44 +399,56 @@ export function Toolbar() {
           removePolygon(selectedPolygonId);
           if (existing) pushAction({ type: 'delete', polygon: existing });
         }}
-        title="Delete selected polygon"
-      >
-        Delete Selected
-      </button>
+      />
       {series && (
         <>
-          <button
+          <IconButton
+            icon={Eraser}
+            label="Clear Frame"
+            title="Clear Frame — delete all polygons on this frame"
             className="toolbar-danger-btn"
             disabled={polygons.length === 0}
             onClick={handleClearFrame}
-            title="Delete all polygons on this frame"
-          >
-            Clear Frame
-          </button>
-          <button
+          />
+          <IconButton
+            icon={Trash}
+            label="Clear Movie"
+            title="Clear Movie — delete all polygons across every frame of this series"
             className="toolbar-danger-btn"
             onClick={handleClearMovie}
-            title="Delete all polygons across every frame of this series"
-          >
-            Clear Movie
-          </button>
+          />
           <a
-            className="toolbar-link-btn"
+            className="toolbar-link-btn toolbar-icon-btn"
             href={api.frameMaskUrl(series.id, frameIndex)}
-            title="Download this frame's polygons rasterized as a label-mask TIFF"
+            title="Export Frame Mask — download this frame's polygons rasterized as a label-mask TIFF"
+            aria-label="Export Frame Mask"
           >
-            Export Frame Mask
+            <Download size={16} strokeWidth={2} />
           </a>
           <a
-            className="toolbar-link-btn"
+            className="toolbar-link-btn toolbar-icon-btn"
             href={api.seriesMaskUrl(series.id)}
-            title="Download every frame's polygons rasterized as a multi-page label-mask TIFF"
+            title="Export Mask Stack — download every frame's polygons rasterized as label masks: one TIFF per frame (zipped) if this series came from separate image files, or a single multi-page TIFF stack if it came from one"
+            aria-label="Export Mask Stack"
           >
-            Export Mask Stack
+            <FileArchive size={16} strokeWidth={2} />
           </a>
         </>
       )}
       </div>
+      {autoSegmenting && (
+        <div className="batch-overlay">
+          <div className="batch-panel">
+            <h3>Segmenting frame…</h3>
+            <BufferBar label="Detecting instances…" />
+            <div className="batch-panel-actions">
+              <button className="toolbar-danger-btn" onClick={handleStopAutoSegment}>
+                Stop
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {batchProgress && (
         <div className="batch-overlay">
           <div className="batch-panel">
