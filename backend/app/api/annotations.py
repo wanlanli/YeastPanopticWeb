@@ -5,6 +5,7 @@ from app.db import get_db
 from app.models.polygon import Polygon
 from app.models.series import ImageSeries
 from app.schemas.polygon import (
+    FramePredictResult,
     PointPrompt,
     PolygonCreate,
     PolygonOut,
@@ -12,7 +13,8 @@ from app.schemas.polygon import (
     PredictResult,
 )
 from app.services import image_io
-from app.services.segmentation import get_model
+from app.services.segmentation import get_auto_model, get_model
+from app.services.segmentation.http_model import SegmentationServiceError
 
 router = APIRouter(prefix="/api/series", tags=["annotations"])
 
@@ -116,5 +118,33 @@ def predict_point(
         raise HTTPException(404, str(exc)) from exc
 
     model = get_model()
-    polygons = model.predict_point(arr, body.x, body.y)
+    points = [(p.x, p.y, p.label) for p in body.points]
+    try:
+        polygons = model.predict_point(arr, points)
+    except SegmentationServiceError as exc:
+        raise HTTPException(502, str(exc)) from exc
     return PredictResult(polygons=polygons)
+
+
+@router.post(
+    "/{series_id}/frame/{frame_index}/predict-frame", response_model=FramePredictResult
+)
+def predict_frame(
+    series_id: int,
+    frame_index: int,
+    db: Session = Depends(get_db),
+):
+    series = db.get(ImageSeries, series_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+    try:
+        arr = image_io.read_frame(series.source_type, series.path, frame_index)
+    except IndexError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+    model = get_auto_model()
+    try:
+        predictions = model.predict_frame(arr)
+    except SegmentationServiceError as exc:
+        raise HTTPException(502, str(exc)) from exc
+    return FramePredictResult(predictions=predictions)

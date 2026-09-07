@@ -4,6 +4,15 @@ backend/storage/
 __pycache__/
 *.pyc
 
+# SAM point-prompt service
+sam_service/.venv/
+sam_service/storage/
+
+# Yeast panoptic auto-segmentation service
+panoptic_service/.venv/
+panoptic_service/storage/
+panoptic_service/PytrochDeepyeastDeploy/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
@@ -14,3 +23,7 @@ frontend/dist/
 
 # Large local test fixtures (not meant for version control)
 sample_data/
+
+# Reference-only dump of CVAT's serverless model functions (not part of
+# this project's source; kept locally for adapting model integration code)
+serverless/

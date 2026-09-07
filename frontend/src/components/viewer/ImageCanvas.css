@@ -15,15 +15,26 @@
   background: #0c0c10;
 }
 
-.predicting-badge {
+.canvas-badges {
   position: absolute;
   top: 10px;
   left: 50%;
   transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.predicting-badge {
   background: rgba(61, 99, 221, 0.9);
   color: #fff;
   padding: 4px 12px;
   border-radius: 12px;
   font-size: 12px;
-  z-index: 10;
+}
+
+.warning-badge {
+  background: rgba(217, 89, 38, 0.95);
 }

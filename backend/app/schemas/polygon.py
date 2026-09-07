@@ -26,10 +26,26 @@ class PolygonOut(BaseModel):
     updated_at: datetime
 
 
-class PointPrompt(BaseModel):
+class Point(BaseModel):
     x: float
     y: float
+    label: int = 1  # 1 = include (foreground), 0 = exclude (background)
+
+
+class PointPrompt(BaseModel):
+    points: list[Point]
 
 
 class PredictResult(BaseModel):
     polygons: list[list[list[float]]]
+
+
+class FramePrediction(BaseModel):
+    class_id: int
+    class_name: str
+    points: list[list[float]]
+    confidence: float
+
+
+class FramePredictResult(BaseModel):
+    predictions: list[FramePrediction]

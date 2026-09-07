@@ -18,6 +18,8 @@ export function Viewer() {
   const [newSeriesPath, setNewSeriesPath] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const series = useViewerStore((s) => s.series);
@@ -51,7 +53,7 @@ export function Viewer() {
     }
   }
 
-  async function handleUpload(files: FileList | null) {
+  async function handleUpload(files: FileList | File[] | null) {
     if (!files || files.length === 0) return;
     const name = newSeriesName || files[0].name;
     setBusy(true);
@@ -67,6 +69,39 @@ export function Viewer() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    if (!e.dataTransfer.types.includes('Files')) return;
+    dragCounter.current += 1;
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current === 0) setIsDragging(false);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault(); // required to allow a drop
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setIsDragging(false);
+    if (busy) return;
+    const files = Array.from(e.dataTransfer.files).filter((f) => {
+      const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
+      return ['.tif', '.tiff', '.png', '.jpg', '.jpeg'].includes(ext);
+    });
+    if (files.length === 0) {
+      setError('No supported image files (.tif/.tiff/.png/.jpg/.jpeg) in the dropped item(s)');
+      return;
+    }
+    handleUpload(files);
   }
 
   return (
@@ -115,7 +150,13 @@ export function Viewer() {
               Register
             </button>
           </div>
-          <div className="add-series-row">
+          <div
+            className={`drop-zone${isDragging ? ' dragging' : ''}`}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -124,6 +165,7 @@ export function Viewer() {
               onChange={(e) => handleUpload(e.target.files)}
               disabled={busy}
             />
+            <span className="drop-zone-hint">or drag &amp; drop files here</span>
           </div>
           {error && <div className="error-text">{error}</div>}
         </div>

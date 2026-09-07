@@ -71,3 +71,82 @@
   opacity: 0.4;
   cursor: default;
 }
+
+.toolbar-buffer {
+  padding: 0 6px;
+}
+
+.prompt-class-select {
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toolbar-hint-text {
+  font-size: 12px;
+  color: #aaa;
+  padding: 0 4px;
+}
+
+.saved-indicator {
+  font-size: 12px;
+  color: #3dd6a8;
+  font-weight: 600;
+  padding: 0 4px;
+  animation: saved-indicator-fade 1.6s ease-out;
+}
+
+@keyframes saved-indicator-fade {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.batch-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.batch-panel {
+  background: #1e1e24;
+  border: 1px solid #3a3a45;
+  border-radius: 8px;
+  padding: 20px 24px;
+  min-width: 320px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.batch-panel h3 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  color: #eee;
+}
+
+.batch-eta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.batch-panel-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}

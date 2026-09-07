@@ -16,9 +16,20 @@ import numpy as np
 class SegmentationModel(ABC):
     @abstractmethod
     def predict_point(
-        self, image: np.ndarray, x: float, y: float
+        self, image: np.ndarray, points: list[tuple[float, float, int]]
     ) -> list[list[list[float]]]:
-        """Given a grayscale/RGB image and a clicked point (image pixel
-        coordinates), return one or more polygons, each a list of [x, y]
-        points, describing the predicted mask(s)."""
+        """Given a grayscale/RGB image and one or more clicked points, each
+        (x, y, label) in image pixel coordinates with label 1=include
+        (foreground) or 0=exclude (background), return one or more
+        polygons, each a list of [x, y] points, describing the predicted
+        mask(s)."""
+        raise NotImplementedError
+
+
+class AutoSegmentationModel(ABC):
+    @abstractmethod
+    def predict_frame(self, image: np.ndarray) -> list[dict]:
+        """Given a grayscale/RGB image, detect every instance in it (no
+        point prompt). Returns a list of
+        {"class_id": int, "class_name": str, "points": [[x, y], ...], "confidence": float}."""
         raise NotImplementedError

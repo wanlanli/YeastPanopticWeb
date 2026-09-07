@@ -89,11 +89,19 @@ export const api = {
     }),
   deleteSeriesPolygons: (seriesId: number) =>
     request<{ deleted: number }>(`/api/series/${seriesId}/polygons`, { method: 'DELETE' }),
-  predictPoint: (seriesId: number, frameIndex: number, x: number, y: number) =>
+  predictPoint: (
+    seriesId: number,
+    frameIndex: number,
+    points: { x: number; y: number; label: 0 | 1 }[],
+  ) =>
     request<{ polygons: [number, number][][] }>(
       `/api/series/${seriesId}/frame/${frameIndex}/predict-point`,
-      { method: 'POST', body: JSON.stringify({ x, y }) },
+      { method: 'POST', body: JSON.stringify({ points }) },
     ),
+  predictFrame: (seriesId: number, frameIndex: number) =>
+    request<{
+      predictions: { class_id: number; class_name: string; points: [number, number][]; confidence: number }[];
+    }>(`/api/series/${seriesId}/frame/${frameIndex}/predict-frame`, { method: 'POST' }),
 
   // Quantification
   listDatasets: (projectId: number) =>

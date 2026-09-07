@@ -3,9 +3,28 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Circle, Group, Image as KonvaImage, Layer, Line, Stage } from 'react-konva';
 import { api } from '../../api/client';
 import { useViewerStore } from '../../store/useViewerStore';
+import { BufferBar } from './BufferBar';
 import { PolygonLayer } from './PolygonLayer';
+import { useDraftActions } from './useDraftActions';
 import { useHtmlImage } from './useHtmlImage';
+import { useUndoRedo } from './useUndoRedo';
 import './ImageCanvas.css';
+
+const CLOSE_POLYGON_TOLERANCE_PX = 8; // screen pixels, converted via /scale below
+const AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000;
+
+/** Standard ray-casting point-in-polygon test. */
+function isPointInPolygon(pt: [number, number], polygon: [number, number][]): boolean {
+  const [x, y] = pt;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
 
 export function ImageCanvas() {
   const series = useViewerStore((s) => s.series);
@@ -19,13 +38,36 @@ export function ImageCanvas() {
   const selectedPolygonId = useViewerStore((s) => s.selectedPolygonId);
   const setSelectedPolygonId = useViewerStore((s) => s.setSelectedPolygonId);
   const removePolygon = useViewerStore((s) => s.removePolygon);
+  const draftPoints = useViewerStore((s) => s.draftPoints);
+  const setDraftPoints = useViewerStore((s) => s.setDraftPoints);
+  const promptPoints = useViewerStore((s) => s.promptPoints);
+  const setPromptPoints = useViewerStore((s) => s.setPromptPoints);
+  const promptPreview = useViewerStore((s) => s.promptPreview);
+  const setPromptPreview = useViewerStore((s) => s.setPromptPreview);
+  const clearDrafts = useViewerStore((s) => s.clearDrafts);
+  const pushAction = useViewerStore((s) => s.pushAction);
+  const markSaved = useViewerStore((s) => s.markSaved);
+  const { undo, redo } = useUndoRedo();
+  const { finishDraft, finishPrompt, cancelPrompt, refineTarget, hasPendingDraft, saveCurrent } = useDraftActions();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const groupRef = useRef<Konva.Group>(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
-  const [draftPoints, setDraftPoints] = useState<[number, number][]>([]);
   const [isPredicting, setIsPredicting] = useState(false);
+  const [promptWarning, setPromptWarning] = useState<string | null>(null);
+  const promptWarningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (promptWarningTimeoutRef.current) clearTimeout(promptWarningTimeoutRef.current);
+  }, []);
+  /** index of the existing vertex a reshape-between-anchors started at (select tool) */
+  const [reshapeAnchor, setReshapeAnchor] = useState<number | null>(null);
+  const [reshapeDraft, setReshapeDraft] = useState<[number, number][]>([]);
+  /** once both anchors are picked, the two ways to close the loop -- user picks one */
+  const [reshapeCandidates, setReshapeCandidates] = useState<{
+    a: [number, number][];
+    b: [number, number][];
+  } | null>(null);
 
   const imageUrl = series
     ? api.frameUrl(series.id, frameIndex, vmin ?? undefined, vmax ?? undefined)
@@ -61,15 +103,33 @@ export function ImageCanvas() {
     api.listPolygons(series.id, frameIndex).then((data) => {
       if (!cancelled) setPolygons(data);
     });
-    setDraftPoints([]);
+    clearDrafts();
+    setReshapeAnchor(null);
+    setReshapeDraft([]);
+    setReshapeCandidates(null);
     return () => {
       cancelled = true;
     };
-  }, [series?.id, frameIndex, setPolygons]);
+  }, [series?.id, frameIndex, setPolygons, clearDrafts]);
 
   useEffect(() => {
-    if (tool !== 'draw') setDraftPoints([]);
+    // Switching tools does NOT clear an in-progress draw/point-prompt draft
+    // -- it stays pending (and the Toolbar's Save button can still finish
+    // it) until you explicitly finish it or press Esc. Only the reshape/cut
+    // state is tool-scoped, since it only makes sense in the select tool.
+    if (tool !== 'select') {
+      setReshapeAnchor(null);
+      setReshapeDraft([]);
+      setReshapeCandidates(null);
+    }
   }, [tool]);
+
+  // switching (or clearing) the selected polygon cancels any in-progress reshape
+  useEffect(() => {
+    setReshapeAnchor(null);
+    setReshapeDraft([]);
+    setReshapeCandidates(null);
+  }, [selectedPolygonId]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -78,21 +138,85 @@ export function ImageCanvas() {
         target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||
         (target instanceof HTMLElement && target.isContentEditable);
+      if (isTyping) return;
 
-      if (!isTyping && (e.key === 'Delete' || e.key === 'Backspace') && selectedPolygonId !== null) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
-        api.deletePolygon(selectedPolygonId).then(() => removePolygon(selectedPolygonId));
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault(); // stop the browser's native "Save Page" dialog
+        (async () => {
+          if (hasPendingDraft) await saveCurrent();
+          markSaved();
+        })();
         return;
       }
 
-      if (tool !== 'draw') return;
-      if (e.key === 'Enter') finishDraft();
-      if (e.key === 'Escape') setDraftPoints([]);
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedPolygonId !== null) {
+        e.preventDefault();
+        const existing = polygons.find((p) => p.id === selectedPolygonId);
+        api.deletePolygon(selectedPolygonId).then(() => {
+          removePolygon(selectedPolygonId);
+          if (existing) pushAction({ type: 'delete', polygon: existing });
+        });
+        return;
+      }
+
+      if (tool === 'draw' && e.key === 'Enter') finishDraft();
+      if (tool === 'point-prompt' && e.key === 'Enter') finishPrompt();
+
+      if (e.key === 'Escape') {
+        // Esc always cancels whatever's in progress, regardless of which
+        // tool you're currently on (a draft survives switching tools away
+        // from it, so this needs to reach it there too).
+        if (draftPoints.length > 0) setDraftPoints([]);
+        if (promptPoints.length > 0 || promptPreview) cancelPrompt();
+        if (reshapeCandidates) setReshapeCandidates(null);
+        if (reshapeAnchor !== null) {
+          setReshapeAnchor(null);
+          setReshapeDraft([]);
+        }
+      }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, draftPoints, series, frameIndex, selectedPolygonId, removePolygon]);
+  }, [
+    tool,
+    draftPoints,
+    promptPreview,
+    reshapeAnchor,
+    reshapeCandidates,
+    polygons,
+    series,
+    frameIndex,
+    selectedPolygonId,
+    removePolygon,
+    undo,
+    redo,
+    hasPendingDraft,
+    saveCurrent,
+    markSaved,
+  ]);
+
+  // Auto-save any pending draft every 5 minutes, so work isn't lost if a
+  // draw/point-prompt draft is left unfinished for a while.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (hasPendingDraft) {
+        saveCurrent().then(markSaved);
+      }
+    }, AUTOSAVE_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [hasPendingDraft, saveCurrent, markSaved]);
 
   function handleWheel(e: Konva.KonvaEventObject<WheelEvent>) {
     e.evt.preventDefault();
@@ -122,14 +246,60 @@ export function ImageCanvas() {
     return pos ? [pos.x, pos.y] : null;
   }, []);
 
-  async function finishDraft() {
-    if (!series || draftPoints.length < 3) {
-      setDraftPoints([]);
+  /** Cut the closed polygon along a new line drawn from vertex `anchorA` to
+   * vertex `anchorB` (via `draft`, in that click order). There are two ways
+   * to close the resulting loop -- returns both, matching CVAT's polygon
+   * edit tool (cvat-canvas/src/typescript/editHandler.ts's stopEdit). */
+  function cutCandidates(
+    points: [number, number][],
+    anchorA: number,
+    anchorB: number,
+    draft: [number, number][],
+  ): { a: [number, number][]; b: [number, number][] } {
+    const idxLow = Math.min(anchorA, anchorB);
+    const idxHigh = Math.max(anchorA, anchorB);
+    let line = [points[anchorA], ...draft, points[anchorB]];
+    if (anchorA !== idxLow) line = [...line].reverse(); // always low -> high now
+
+    const a = [...points.slice(0, idxLow), ...line, ...points.slice(idxHigh + 1)];
+    const b = [...points.slice(idxLow, idxHigh), ...line.slice(1).reverse()];
+    return { a, b };
+  }
+
+  function handleVertexClick(index: number) {
+    if (tool !== 'select' || reshapeCandidates) return;
+    if (reshapeAnchor === null) {
+      setReshapeAnchor(index);
+      setReshapeDraft([]);
       return;
     }
-    const created = await api.createPolygon(series.id, frameIndex, draftPoints, 'manual');
-    upsertPolygon(created);
-    setDraftPoints([]);
+    if (index === reshapeAnchor) {
+      // clicking the same anchor again cancels
+      setReshapeAnchor(null);
+      setReshapeDraft([]);
+      return;
+    }
+    const poly = polygons.find((p) => p.id === selectedPolygonId);
+    if (poly) {
+      const { a, b } = cutCandidates(poly.points, reshapeAnchor, index, reshapeDraft);
+      if (a.length >= 3 && b.length >= 3) {
+        setReshapeCandidates({ a, b });
+      } // otherwise a degenerate cut -- silently cancel, same as CVAT
+    }
+    setReshapeAnchor(null);
+    setReshapeDraft([]);
+  }
+
+  function chooseReshapeCandidate(points: [number, number][]) {
+    if (selectedPolygonId !== null) commitPolygon(selectedPolygonId, points);
+    setReshapeCandidates(null);
+  }
+
+  /** Add a cut point while reshaping -- shared by clicks on empty canvas
+   * (handleStageClick) and clicks on the polygon's own fill/edge, which
+   * Konva routes to PolygonLayer instead of bubbling here. */
+  function addReshapePoint(point: [number, number]) {
+    setReshapeDraft((prev) => [...prev, point]);
   }
 
   async function handleStageClick(e: Konva.KonvaEventObject<MouseEvent>) {
@@ -138,6 +308,11 @@ export function ImageCanvas() {
     if (!clickedOnEmpty) return; // a polygon/vertex handled its own click
 
     if (tool === 'select') {
+      if (reshapeAnchor !== null) {
+        const pt = getImagePoint();
+        if (pt) addReshapePoint(pt);
+        return;
+      }
       setSelectedPolygonId(null);
       return;
     }
@@ -146,27 +321,84 @@ export function ImageCanvas() {
     if (!pt) return;
 
     if (tool === 'draw') {
-      setDraftPoints((prev) => [...prev, pt]);
+      if (draftPoints.length >= 3) {
+        // click back on the starting point to close the loop -- deliberate
+        // and unambiguous, unlike relying on double-click timing
+        const [fx, fy] = draftPoints[0];
+        const tolerance = CLOSE_POLYGON_TOLERANCE_PX / transform.scale;
+        if (Math.hypot(pt[0] - fx, pt[1] - fy) <= tolerance) {
+          finishDraft();
+          return;
+        }
+      }
+      setDraftPoints([...draftPoints, pt]);
       return;
     }
 
     if (tool === 'point-prompt') {
-      setIsPredicting(true);
-      try {
-        const result = await api.predictPoint(series.id, frameIndex, pt[0], pt[1]);
-        for (const poly of result.polygons) {
-          const created = await api.createPolygon(series.id, frameIndex, poly, 'model');
-          upsertPolygon(created);
-        }
-      } finally {
-        setIsPredicting(false);
-      }
+      await addPromptPoint(pt, 1); // left click = include (foreground)
+    }
+  }
+
+  function showPromptWarning(message: string) {
+    if (promptWarningTimeoutRef.current) clearTimeout(promptWarningTimeoutRef.current);
+    setPromptWarning(message);
+    promptWarningTimeoutRef.current = setTimeout(() => setPromptWarning(null), 2000);
+  }
+
+  /** Shared by left-click (include) and right-click (exclude) point-prompt clicks. */
+  async function addPromptPoint(pt: [number, number], label: 0 | 1) {
+    if (!series) return;
+    // An include point already inside the current mask adds no new
+    // information and is usually a miss-click -- exclude points still work
+    // anywhere, since they're normally placed inside the mask on purpose,
+    // to carve a wrongly-included area back out.
+    if (label === 1 && promptPreview && isPointInPolygon(pt, promptPreview)) {
+      showPromptWarning('That point is already inside the current mask — click outside it to expand, or right-click to exclude part of it');
+      return;
+    }
+    const nextPoints = [...promptPoints, { x: pt[0], y: pt[1], label }];
+    setPromptPoints(nextPoints);
+    setIsPredicting(true);
+    try {
+      const result = await api.predictPoint(series.id, frameIndex, nextPoints);
+      setPromptPreview(result.polygons[0] ?? null);
+    } finally {
+      setIsPredicting(false);
+    }
+  }
+
+  function handleContextMenu(e: Konva.KonvaEventObject<MouseEvent>) {
+    e.evt.preventDefault();
+    // right-click undoes the last added point, matching CVAT's draw/edit tools
+    if (tool === 'select' && reshapeAnchor !== null && reshapeDraft.length > 0) {
+      setReshapeDraft((prev) => prev.slice(0, -1));
+    }
+    if (tool === 'draw' && draftPoints.length > 0) {
+      setDraftPoints(draftPoints.slice(0, -1));
+    }
+    // right-click = exclude (background) point, refining the mask live
+    if (tool === 'point-prompt') {
+      const stage = e.target.getStage();
+      const clickedOnEmpty = e.target === stage || e.target.className === 'Image';
+      if (!clickedOnEmpty) return;
+      const pt = getImagePoint();
+      if (pt) addPromptPoint(pt, 0);
     }
   }
 
   async function commitPolygon(id: number, points: [number, number][]) {
+    const existing = polygons.find((p) => p.id === id);
     const updated = await api.updatePolygon(id, { points });
     upsertPolygon(updated);
+    if (existing) {
+      pushAction({
+        type: 'update',
+        id,
+        before: { points: existing.points, label: existing.label },
+        after: { points: updated.points, label: updated.label },
+      });
+    }
   }
 
   function localChange(id: number, points: [number, number][]) {
@@ -184,13 +416,46 @@ export function ImageCanvas() {
 
   return (
     <div className="image-canvas-container" ref={containerRef}>
-      {isPredicting && <div className="predicting-badge">Predicting mask…</div>}
+      <div className="canvas-badges">
+        {isPredicting && (
+          <div className="predicting-badge">
+            <BufferBar label="Predicting mask…" />
+          </div>
+        )}
+        {draftPoints.length > 0 && (
+          <div className="predicting-badge">
+            {draftPoints.length} point{draftPoints.length === 1 ? '' : 's'} — right-click to undo a point, click the
+            first point (or Enter) to close, Esc to cancel
+          </div>
+        )}
+        {tool === 'point-prompt' && refineTarget && promptPoints.length === 0 && !isPredicting && (
+          <div className="predicting-badge">
+            Refining polygon #{refineTarget.id} — left-click to include, right-click to exclude, Enter to replace its
+            shape
+          </div>
+        )}
+        {!isPredicting && promptPoints.length > 0 && (
+          <div className="predicting-badge">
+            {promptPoints.length} point{promptPoints.length === 1 ? '' : 's'} — left-click to include, right-click to
+            exclude, Enter to {refineTarget ? 'replace its shape' : 'confirm'}, Esc to cancel
+          </div>
+        )}
+        {reshapeAnchor !== null && (
+          <div className="predicting-badge">
+            Cutting — click to add points, right-click to undo a point, click a vertex to finish there, Esc to cancel
+          </div>
+        )}
+        {reshapeCandidates && (
+          <div className="predicting-badge">Pick which side to keep — click a highlighted shape, Esc to cancel</div>
+        )}
+        {promptWarning && <div className="predicting-badge warning-badge">{promptWarning}</div>}
+      </div>
       <Stage
         width={size.width}
         height={size.height}
         onWheel={handleWheel}
         onClick={handleStageClick}
-        onDblClick={tool === 'draw' ? finishDraft : undefined}
+        onContextMenu={handleContextMenu}
         style={{ cursor: tool === 'select' ? 'default' : 'crosshair' }}
       >
         <Layer>
@@ -209,9 +474,14 @@ export function ImageCanvas() {
                 polygon={poly}
                 isSelected={selectedPolygonId === poly.id}
                 scale={transform.scale}
+                interactive={tool === 'select'}
+                reshaping={selectedPolygonId === poly.id && reshapeAnchor !== null}
+                hoverSelectEnabled={tool === 'select' && reshapeAnchor === null && !reshapeCandidates}
                 onSelect={() => tool === 'select' && setSelectedPolygonId(poly.id)}
                 onChangePoints={(pts) => localChange(poly.id, pts)}
                 onCommitPoints={(pts) => commitPolygon(poly.id, pts)}
+                onVertexClick={handleVertexClick}
+                onReshapeClick={addReshapePoint}
               />
             ))}
 
@@ -222,10 +492,101 @@ export function ImageCanvas() {
                   stroke="#3d63dd"
                   strokeWidth={2 / transform.scale}
                   dash={[6 / transform.scale, 4 / transform.scale]}
+                  listening={false}
                 />
                 {draftPoints.map(([x, y], i) => (
-                  <Circle key={i} x={x} y={y} radius={4 / transform.scale} fill="#3d63dd" />
+                  <Circle
+                    key={i}
+                    x={x}
+                    y={y}
+                    radius={(i === 0 ? 6 : 4) / transform.scale}
+                    fill={i === 0 ? undefined : '#3d63dd'}
+                    stroke={i === 0 ? '#3d63dd' : undefined}
+                    strokeWidth={i === 0 ? 2 / transform.scale : undefined}
+                    listening={false}
+                  />
                 ))}
+              </>
+            )}
+
+            {promptPoints.length > 0 && (
+              <>
+                {promptPreview && (
+                  <Line
+                    points={promptPreview.flat()}
+                    closed
+                    stroke="#0ea5a5"
+                    strokeWidth={2 / transform.scale}
+                    dash={[6 / transform.scale, 4 / transform.scale]}
+                    fill="rgba(14,165,165,0.15)"
+                    listening={false}
+                  />
+                )}
+                {promptPoints.map((p, i) => (
+                  <Circle
+                    key={i}
+                    x={p.x}
+                    y={p.y}
+                    radius={4 / transform.scale}
+                    fill={p.label === 1 ? '#22c55e' : '#ef4444'}
+                    listening={false}
+                  />
+                ))}
+              </>
+            )}
+
+            {reshapeAnchor !== null &&
+              (() => {
+                const poly = polygons.find((p) => p.id === selectedPolygonId);
+                if (!poly) return null;
+                const anchorPoint = poly.points[reshapeAnchor];
+                const previewPoints = [anchorPoint, ...reshapeDraft];
+                return (
+                  <>
+                    <Line
+                      points={previewPoints.flat()}
+                      stroke="#ffb020"
+                      strokeWidth={2 / transform.scale}
+                      dash={[6 / transform.scale, 4 / transform.scale]}
+                      listening={false}
+                    />
+                    <Circle
+                      x={anchorPoint[0]}
+                      y={anchorPoint[1]}
+                      radius={6 / transform.scale}
+                      stroke="#ffb020"
+                      strokeWidth={2 / transform.scale}
+                      listening={false}
+                    />
+                    {reshapeDraft.map(([x, y], i) => (
+                      <Circle key={i} x={x} y={y} radius={4 / transform.scale} fill="#ffb020" listening={false} />
+                    ))}
+                  </>
+                );
+              })()}
+
+            {reshapeCandidates && (
+              <>
+                <Line
+                  points={reshapeCandidates.a.flat()}
+                  closed
+                  stroke="#3d9bff"
+                  fill="rgba(61,155,255,0.35)"
+                  strokeWidth={2 / transform.scale}
+                  onClick={() => chooseReshapeCandidate(reshapeCandidates.a)}
+                  onMouseEnter={(e) => (e.target.getStage()!.container().style.cursor = 'pointer')}
+                  onMouseLeave={(e) => (e.target.getStage()!.container().style.cursor = 'default')}
+                />
+                <Line
+                  points={reshapeCandidates.b.flat()}
+                  closed
+                  stroke="#ff7a3d"
+                  fill="rgba(255,122,61,0.35)"
+                  strokeWidth={2 / transform.scale}
+                  onClick={() => chooseReshapeCandidate(reshapeCandidates.b)}
+                  onMouseEnter={(e) => (e.target.getStage()!.container().style.cursor = 'pointer')}
+                  onMouseLeave={(e) => (e.target.getStage()!.container().style.cursor = 'default')}
+                />
               </>
             )}
           </Group>

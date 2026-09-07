@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import annotations, projects, quantification, series
 from app.db import init_db
+from app.seed import seed_sample_project
 
 app = FastAPI(title="YeastPanopticWeb API")
 
@@ -18,6 +19,7 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     init_db()
+    seed_sample_project()
 
 
 app.include_router(projects.router)

@@ -88,13 +88,10 @@ def auto_contrast_range(arr: np.ndarray) -> tuple[float, float]:
     return float(lo), float(hi)
 
 
-def render_frame_png(
+def _contrast_stretch_uint8(
     arr: np.ndarray, vmin: float | None = None, vmax: float | None = None
-) -> bytes:
-    """Contrast-stretch an 8/16-bit (or float) array into an 8-bit PNG."""
-    if arr.ndim == 3 and arr.shape[2] > 3:
-        arr = arr[:, :, 0]  # unsupported multi-channel: show first channel
-
+) -> np.ndarray:
+    """Contrast-stretch an 8/16-bit (or float) single-channel array into 8-bit."""
     work = arr.astype(np.float32)
     if vmin is None or vmax is None:
         auto_lo, auto_hi = auto_contrast_range(work)
@@ -104,9 +101,33 @@ def render_frame_png(
         vmax = vmin + 1
 
     stretched = np.clip((work - vmin) / (vmax - vmin), 0, 1)
-    img8 = (stretched * 255).astype(np.uint8)
+    return (stretched * 255).astype(np.uint8)
+
+
+def render_frame_png(
+    arr: np.ndarray, vmin: float | None = None, vmax: float | None = None
+) -> bytes:
+    """Contrast-stretch an 8/16-bit (or float) array into an 8-bit PNG."""
+    if arr.ndim == 3 and arr.shape[2] > 3:
+        arr = arr[:, :, 0]  # unsupported multi-channel: show first channel
+
+    img8 = _contrast_stretch_uint8(arr, vmin, vmax)
 
     image = Image.fromarray(img8)
     buf = io.BytesIO()
     image.save(buf, format="PNG")
     return buf.getvalue()
+
+
+def to_uint8_rgb(arr: np.ndarray) -> np.ndarray:
+    """Contrast-stretch any microscopy frame (8/16-bit, 1+ channels) into an
+    8-bit RGB array -- the input format SAM's image encoder expects."""
+    if arr.ndim == 3 and arr.shape[2] > 3:
+        arr = arr[:, :, 0]
+
+    img8 = _contrast_stretch_uint8(arr)
+    if img8.ndim == 2:
+        return np.stack([img8] * 3, axis=-1)
+    if img8.shape[2] == 1:
+        return np.repeat(img8, 3, axis=2)
+    return img8

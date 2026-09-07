@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '../../api/client';
 import type { PolygonAnnotation } from '../../api/types';
 import { useViewerStore } from '../../store/useViewerStore';
-import { classFromLabel, colorForClass } from './colorByClass';
+import { CLASS_IDS, classDisplayName, classFromLabel, colorForClass, textColorForClass } from './colorByClass';
 import './PolygonList.css';
 
 const SOURCE_COLOR: Record<PolygonAnnotation['source'], string> = {
@@ -26,6 +26,7 @@ export function PolygonList() {
   const selectPolygon = useViewerStore((s) => s.selectPolygon);
   const upsertPolygon = useViewerStore((s) => s.upsertPolygon);
   const removePolygon = useViewerStore((s) => s.removePolygon);
+  const pushAction = useViewerStore((s) => s.pushAction);
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -49,12 +50,34 @@ export function PolygonList() {
     if (editValue === p.label) return;
     const updated = await api.updatePolygon(p.id, { label: editValue });
     upsertPolygon(updated);
+    pushAction({
+      type: 'update',
+      id: p.id,
+      before: { points: p.points, label: p.label },
+      after: { points: updated.points, label: updated.label },
+    });
   }
 
   async function handleDelete(p: PolygonAnnotation, e: React.MouseEvent) {
     e.stopPropagation();
     await api.deletePolygon(p.id);
     removePolygon(p.id);
+    pushAction({ type: 'delete', polygon: p });
+  }
+
+  async function handleChangeType(p: PolygonAnnotation, newClassId: number) {
+    const currentClassId = classFromLabel(p.label);
+    const instance = currentClassId !== null ? Number(p.label) - currentClassId * 1000 : 1;
+    const newLabel = String(newClassId * 1000 + (Number.isFinite(instance) ? instance : 1));
+    if (newLabel === p.label) return;
+    const updated = await api.updatePolygon(p.id, { label: newLabel });
+    upsertPolygon(updated);
+    pushAction({
+      type: 'update',
+      id: p.id,
+      before: { points: p.points, label: p.label },
+      after: { points: updated.points, label: updated.label },
+    });
   }
 
   return (
@@ -67,7 +90,7 @@ export function PolygonList() {
           {classes.map((c) => (
             <span key={c} className="polygon-class-legend-item">
               <span className="polygon-swatch" style={{ background: colorForClass(c) }} />
-              class {c}
+              {classDisplayName(c)}
             </span>
           ))}
         </div>
@@ -79,7 +102,28 @@ export function PolygonList() {
             className={p.id === selectedPolygonId ? 'selected' : ''}
             onClick={() => handleSelect(p)}
           >
-            <span className="polygon-swatch" style={{ background: swatchColor(p) }} />
+            <select
+              className="polygon-type-select"
+              style={{
+                backgroundColor: swatchColor(p),
+                color: classFromLabel(p.label) !== null ? textColorForClass(classFromLabel(p.label)!) : undefined,
+              }}
+              value={classFromLabel(p.label) ?? ''}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => handleChangeType(p, Number(e.target.value))}
+              title="Change type"
+            >
+              {classFromLabel(p.label) === null && (
+                <option value="" disabled>
+                  type…
+                </option>
+              )}
+              {CLASS_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {classDisplayName(id)}
+                </option>
+              ))}
+            </select>
             {editingId === p.id ? (
               <input
                 autoFocus

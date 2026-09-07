@@ -5,16 +5,20 @@ ML dependency: flood-fills a region of similar intensity around the clicked
 point, then vectorizes its boundary into a polygon. Not intended to be
 biologically accurate — swap in `SegmentationModel` subclass backed by a
 real model when it's ready to serve.
+
+Classical flood-fill has no notion of multiple/exclusion points, so only
+the first foreground point is used; extra points (and any exclude points)
+are ignored.
 """
 
 from __future__ import annotations
 
 import numpy as np
 from skimage.color import rgb2gray
-from skimage.measure import approximate_polygon, find_contours
 from skimage.segmentation import flood
 
 from app.services.segmentation.base import SegmentationModel
+from app.services.segmentation.mask_utils import mask_to_polygon
 
 DEFAULT_TOLERANCE_FRACTION = 0.08
 MAX_REGION_FRACTION = 0.25  # refuse regions covering more than this share of the image
@@ -22,8 +26,13 @@ MAX_REGION_FRACTION = 0.25  # refuse regions covering more than this share of th
 
 class PlaceholderPointModel(SegmentationModel):
     def predict_point(
-        self, image: np.ndarray, x: float, y: float
+        self, image: np.ndarray, points: list[tuple[float, float, int]]
     ) -> list[list[list[float]]]:
+        positive = [(x, y) for x, y, label in points if label == 1]
+        if not positive:
+            return []
+        x, y = positive[0]
+
         gray = self._to_gray(image)
         h, w = gray.shape
         row, col = int(round(y)), int(round(x))
@@ -40,14 +49,9 @@ class PlaceholderPointModel(SegmentationModel):
             # always gets *something* editable back
             return [self._box_polygon(row, col, h, w)]
 
-        contours = find_contours(mask.astype(np.float32), level=0.5)
-        if not contours:
+        polygon = mask_to_polygon(mask)
+        if polygon is None:
             return [self._box_polygon(row, col, h, w)]
-
-        largest = max(contours, key=len)
-        simplified = approximate_polygon(largest, tolerance=1.5)
-        # contours are (row, col); convert to (x, y) for the frontend
-        polygon = [[float(c), float(r)] for r, c in simplified]
         return [polygon]
 
     @staticmethod

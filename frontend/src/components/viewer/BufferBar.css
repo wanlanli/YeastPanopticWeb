@@ -1,0 +1,44 @@
+.buffer-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+}
+
+.buffer-bar-label {
+  font-size: 12px;
+  color: #ddd;
+}
+
+.buffer-bar-track {
+  position: relative;
+  width: 100%;
+  height: 5px;
+  border-radius: 3px;
+  background: #2a2a33;
+  overflow: hidden;
+}
+
+.buffer-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 3px;
+  background: #3d63dd;
+  transition: width 0.2s ease;
+}
+
+.buffer-bar-indeterminate {
+  width: 40% !important;
+  animation: buffer-bar-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes buffer-bar-slide {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
+}
