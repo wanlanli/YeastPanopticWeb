@@ -2,10 +2,21 @@
 # Starts all four YeastPanopticWeb processes (sam_service, panoptic_service,
 # backend, frontend) in the background and leaves them running.
 #
-# One-time setup (per service, before this script will work):
-#   cd backend          && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate
-#   cd sam_service       && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate
-#   cd panoptic_service  && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && pip install 'git+https://github.com/cocodataset/panopticapi.git' && deactivate
+# One-time setup (per service, before this script will work) -- pick ONE of:
+#
+#   A) venv (default):
+#     cd backend          && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate
+#     cd sam_service       && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate
+#     cd panoptic_service  && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && pip install 'git+https://github.com/cocodataset/panopticapi.git' && deactivate
+#
+#   B) conda -- if `python3 -m venv` isn't usable (e.g. no sudo to install
+#      python3-venv) and conda is already on this machine, set
+#      PYTHON_ENV_MANAGER=conda in .env and instead create:
+#     conda create -n yeastpanoptic-backend python=3.10 -y && conda activate yeastpanoptic-backend && cd backend && pip install -r requirements.txt
+#     conda create -n yeastpanoptic-sam_service python=3.10 -y && conda activate yeastpanoptic-sam_service && cd sam_service && pip install -r requirements.txt
+#     conda create -n yeastpanoptic-panoptic_service python=3.10 -y && conda activate yeastpanoptic-panoptic_service && cd panoptic_service && pip install -r requirements.txt && pip install 'git+https://github.com/cocodataset/panopticapi.git'
+#
+# Either way, also:
 #   cd frontend          && npm install
 #   cp .env.example .env && edit the paths in it (see comments there)
 #
@@ -34,16 +45,49 @@ else
   exit 1
 fi
 
-check_venv() {
+PYTHON_ENV_MANAGER="${PYTHON_ENV_MANAGER:-venv}"  # venv | conda
+
+if [ "$PYTHON_ENV_MANAGER" = "conda" ]; then
+  CONDA_BASE="$(conda info --base 2>/dev/null || true)"
+  if [ -z "$CONDA_BASE" ]; then
+    echo "PYTHON_ENV_MANAGER=conda but 'conda info --base' failed -- is conda on PATH?"
+    exit 1
+  fi
+elif [ "$PYTHON_ENV_MANAGER" != "venv" ]; then
+  echo "Unknown PYTHON_ENV_MANAGER=$PYTHON_ENV_MANAGER (expected venv or conda)"
+  exit 1
+fi
+
+# The interpreter for a given service dir, under whichever env manager is
+# configured. Deliberately NOT `conda run -n ...`/`conda activate` -- those
+# spawn a wrapper process, so the PID scripts/stop_all.sh tracks would be
+# the wrapper, not the real server, leaving it orphaned after "stop".
+# Calling the env's own interpreter directly (same idea as venv's
+# .venv/bin/python3) avoids that.
+service_python() {
   local dir="$1"
-  if [ ! -x "$dir/.venv/bin/python3" ]; then
-    echo "Missing $dir/.venv -- run the one-time setup for $dir first (see the top of this script)."
+  if [ "$PYTHON_ENV_MANAGER" = "conda" ]; then
+    echo "$CONDA_BASE/envs/yeastpanoptic-$dir/bin/python3"
+  else
+    echo "$REPO_ROOT/$dir/.venv/bin/python3"
+  fi
+}
+
+check_env() {
+  local dir="$1"
+  local py; py="$(service_python "$dir")"
+  if [ ! -x "$py" ]; then
+    if [ "$PYTHON_ENV_MANAGER" = "conda" ]; then
+      echo "Missing conda env yeastpanoptic-$dir -- see the setup commands at the top of this script."
+    else
+      echo "Missing $dir/.venv -- run the one-time setup for $dir first (see the top of this script)."
+    fi
     exit 1
   fi
 }
-check_venv backend
-check_venv sam_service
-check_venv panoptic_service
+check_env backend
+check_env sam_service
+check_env panoptic_service
 if [ ! -d frontend/node_modules ]; then
   echo "Missing frontend/node_modules -- run 'cd frontend && npm install' first."
   exit 1
@@ -60,9 +104,9 @@ start() {
   )
 }
 
-start sam_service      sam_service      ".venv/bin/uvicorn app:app --host 0.0.0.0 --port 8100"
-start panoptic_service panoptic_service ".venv/bin/uvicorn app:app --host 0.0.0.0 --port 8200"
-start backend          backend          ".venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000"
+start sam_service      sam_service      "$(service_python sam_service) -m uvicorn app:app --host 0.0.0.0 --port 8100"
+start panoptic_service panoptic_service "$(service_python panoptic_service) -m uvicorn app:app --host 0.0.0.0 --port 8200"
+start backend          backend          "$(service_python backend) -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
 start frontend         frontend         "node_modules/.bin/vite --host 0.0.0.0"
 
 wait_healthy() {

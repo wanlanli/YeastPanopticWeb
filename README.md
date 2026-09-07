@@ -92,6 +92,18 @@ automatically from PyPI -- no special index/CUDA setup needed. If this
 machine has an NVIDIA GPU + driver, it's used automatically
 (`torch.cuda.is_available()`); otherwise everything runs on CPU.
 
+**No sudo, and `python3 -m venv` fails with "ensurepip is not
+available"?** That's the `python3-venv` system package missing, which
+normally needs `apt install` (root) to fix. If conda is already on this
+machine (`which conda`), set `PYTHON_ENV_MANAGER=conda` in `.env` and
+create conda envs instead of venvs -- see the comment at the top of
+`scripts/run_all.sh` for the exact commands (naming convention:
+`yeastpanoptic-backend`, `yeastpanoptic-sam_service`,
+`yeastpanoptic-panoptic_service`). No conda either? `python3 -m venv
+--without-pip .venv && source .venv/bin/activate && curl -sS
+https://bootstrap.pypa.io/get-pip.py | python3` bootstraps pip manually,
+no new system packages needed (just outbound network access).
+
 Stop everything with `./scripts/stop_all.sh`. Logs land in `logs/*.log`.
 
 ### Config you need to change (`.env`)
