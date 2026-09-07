@@ -1,0 +1,42 @@
+# Optional override: run sam_service/panoptic_service OUTSIDE Docker, as
+# plain host processes, instead of as containers -- for hosts with no root
+# to install the NVIDIA Container Toolkit (a hard requirement for Docker
+# GPU access; there is no rootless workaround for it, since it registers a
+# device-driver hook with the Docker daemon itself). If `nvidia-smi` works
+# directly on this host but `docker run --gpus all ...` fails with
+# `could not select device driver "nvidia"`, this is that case.
+#
+# Running those two services as plain processes instead sidesteps the
+# problem entirely -- no container GPU isolation to punch through, so they
+# get the same GPU access `nvidia-smi` already has, with zero extra setup.
+# If you already have conda envs with torch/detectron2/segment-anything
+# installed (e.g. from before trying Docker), reuse them as-is -- no need
+# to reinstall anything.
+#
+# Usage:
+#   1. Start sam_service/panoptic_service on the host directly, e.g.:
+#        <existing-sam-env>/bin/python3 -m uvicorn app:app --host 0.0.0.0 --port 8100   # (from sam_service/)
+#        <existing-panoptic-env>/bin/python3 -m uvicorn app:app --host 0.0.0.0 --port 8200   # (from panoptic_service/)
+#      or via scripts/run_all.sh with SAM_SERVICE_PYTHON/PANOPTIC_SERVICE_PYTHON
+#      set in .env (see .env.example) -- run_all.sh also works standalone,
+#      you don't have to use it with Docker at all.
+#   2. Bring up just backend+frontend in Docker. --no-deps is required --
+#      without it, `depends_on` in the base compose file would still start
+#      the sam_service/panoptic_service containers even though they're not
+#      named here:
+#        docker compose -f docker-compose.yml -f docker-compose.external-ml.yml \
+#          --env-file .env.docker up -d --build --no-deps backend frontend
+#
+#   Stop: docker compose -f docker-compose.yml -f docker-compose.external-ml.yml \
+#           --env-file .env.docker down
+#   (the sam_service/panoptic_service host processes are separate --
+#   scripts/stop_all.sh stops those if you started them that way, otherwise
+#   kill them the way you started them)
+
+services:
+  backend:
+    environment:
+      SAM_SERVICE_URL: http://host.docker.internal:8100
+      PANOPTIC_SERVICE_URL: http://host.docker.internal:8200
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

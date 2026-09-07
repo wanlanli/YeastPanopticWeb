@@ -64,9 +64,21 @@ fi
 # the wrapper, not the real server, leaving it orphaned after "stop".
 # Calling the env's own interpreter directly (same idea as venv's
 # .venv/bin/python3) avoids that.
+#
+# Already have a conda env with the right deps under a different name (e.g.
+# an existing panoptic/SAM env, so you don't have to pip install into a
+# fresh yeastpanoptic-* one)? Set an override in .env instead of renaming
+# anything: BACKEND_PYTHON=/path/to/python3, SAM_SERVICE_PYTHON=..., or
+# PANOPTIC_SERVICE_PYTHON=... (find the path with `conda env list`, or
+# `conda run -n <env> which python3`). It's used as-is, no env-manager
+# checks -- works the same whether PYTHON_ENV_MANAGER is venv or conda.
 service_python() {
   local dir="$1"
-  if [ "$PYTHON_ENV_MANAGER" = "conda" ]; then
+  local override_var
+  override_var="$(echo "$dir" | tr '[:lower:]' '[:upper:]')_PYTHON"
+  if [ -n "${!override_var:-}" ]; then
+    echo "${!override_var}"
+  elif [ "$PYTHON_ENV_MANAGER" = "conda" ]; then
     echo "$CONDA_BASE/envs/yeastpanoptic-$dir/bin/python3"
   else
     echo "$REPO_ROOT/$dir/.venv/bin/python3"
@@ -76,11 +88,15 @@ service_python() {
 check_env() {
   local dir="$1"
   local py; py="$(service_python "$dir")"
+  local override_var
+  override_var="$(echo "$dir" | tr '[:lower:]' '[:upper:]')_PYTHON"
   if [ ! -x "$py" ]; then
-    if [ "$PYTHON_ENV_MANAGER" = "conda" ]; then
-      echo "Missing conda env yeastpanoptic-$dir -- see the setup commands at the top of this script."
+    if [ -n "${!override_var:-}" ]; then
+      echo "$override_var=$py is set but not an executable file -- check the path."
+    elif [ "$PYTHON_ENV_MANAGER" = "conda" ]; then
+      echo "Missing conda env yeastpanoptic-$dir -- see the setup commands at the top of this script, or set $override_var=/path/to/python3 in .env to use an existing env instead."
     else
-      echo "Missing $dir/.venv -- run the one-time setup for $dir first (see the top of this script)."
+      echo "Missing $dir/.venv -- run the one-time setup for $dir first (see the top of this script), or set $override_var=/path/to/python3 in .env to use an existing env instead."
     fi
     exit 1
   fi

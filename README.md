@@ -116,6 +116,18 @@ Confirm it's actually using the GPU (should print `True`):
 docker compose --env-file .env.docker exec sam_service python3 -c "import torch; print(torch.cuda.is_available())"
 ```
 
+**No root, so can't install the NVIDIA Container Toolkit?** (symptom:
+`docker run --gpus all ...` or the command above fails with `could not
+select device driver "nvidia"`, even though `nvidia-smi` works fine
+directly on the host.) There's no rootless workaround for that specific
+piece -- it registers a device-driver hook with the Docker daemon itself.
+Use `docker-compose.external-ml.yml` instead: it keeps backend+frontend in
+Docker (no GPU needed there) and runs sam_service/panoptic_service as
+plain host processes -- same GPU access `nvidia-smi` already has, zero
+Docker/root involvement, and if you already have conda envs with
+torch/detectron2/segment-anything installed, reuse them as-is. See the
+comment at the top of that file for the exact commands.
+
 ### Option B: plain Python envs
 
 One-time setup, then one script starts everything:
