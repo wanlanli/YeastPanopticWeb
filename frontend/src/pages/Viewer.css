@@ -15,6 +15,25 @@
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
+  position: relative;
+  transition: width 0.15s ease;
+}
+
+.viewer-sidebar.panel-collapsed {
+  width: 28px;
+  padding: 12px 0;
+  overflow: hidden;
+}
+
+.viewer-sidebar .panel-toggle-btn {
+  position: absolute;
+  top: 12px;
+  right: 6px;
+}
+
+.viewer-sidebar.panel-collapsed .panel-toggle-btn {
+  position: static;
+  margin: 0 auto;
 }
 
 .back-link,

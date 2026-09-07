@@ -4,6 +4,7 @@ import { useViewerStore } from '../../store/useViewerStore';
 import { FrameMeasurePanel } from './FrameMeasurePanel';
 import { PolygonList } from './PolygonList';
 import { TrackingTree } from '../quantification/TrackingTree';
+import './PanelToggle.css';
 import './RightPanel.css';
 
 export function RightPanel() {
@@ -13,6 +14,7 @@ export function RightPanel() {
   const seriesTracking = useViewerStore((s) => s.seriesTracking);
   const setSeriesTracking = useViewerStore((s) => s.setSeriesTracking);
   const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(true);
 
   const isMovie = (series?.frame_count ?? 0) > 1;
 
@@ -33,58 +35,73 @@ export function RightPanel() {
   }, [series?.id]);
 
   return (
-    <div className="right-panel">
-      <div className="right-panel-tabs">
-        <button
-          className={rightPanelTab === 'labels' ? 'active' : ''}
-          onClick={() => setRightPanelTab('labels')}
-        >
-          Labels
+    <div className={`right-panel${open ? '' : ' panel-collapsed'}`}>
+      {open ? (
+        <div className="right-panel-tabs">
+          <button
+            className="panel-toggle-btn"
+            onClick={() => setOpen(false)}
+            title="Hide panel"
+          >
+            ›
+          </button>
+          <button
+            className={rightPanelTab === 'labels' ? 'active' : ''}
+            onClick={() => setRightPanelTab('labels')}
+          >
+            Labels
+          </button>
+          <button
+            className={rightPanelTab === 'tracking' ? 'active' : ''}
+            onClick={() => setRightPanelTab('tracking')}
+            disabled={!isMovie}
+            title={isMovie ? undefined : 'Tracking only applies to movies (multi-frame series)'}
+          >
+            Tracking
+          </button>
+          <button
+            className={rightPanelTab === 'quantification' ? 'active' : ''}
+            onClick={() => setRightPanelTab('quantification')}
+          >
+            Quantification
+          </button>
+        </div>
+      ) : (
+        <button className="panel-toggle-btn" onClick={() => setOpen(true)} title="Show panel">
+          ‹
         </button>
-        <button
-          className={rightPanelTab === 'tracking' ? 'active' : ''}
-          onClick={() => setRightPanelTab('tracking')}
-          disabled={!isMovie}
-          title={isMovie ? undefined : 'Tracking only applies to movies (multi-frame series)'}
-        >
-          Tracking
-        </button>
-        <button
-          className={rightPanelTab === 'quantification' ? 'active' : ''}
-          onClick={() => setRightPanelTab('quantification')}
-        >
-          Quantification
-        </button>
-      </div>
+      )}
 
-      <div className="right-panel-body">
-        {rightPanelTab === 'labels' && <PolygonList />}
-        {rightPanelTab === 'quantification' && <FrameMeasurePanel />}
-        {rightPanelTab === 'tracking' &&
-          (isMovie ? (
-            <div className="tracking-tab">
-              <div className="tracking-tab-header">
-                <button onClick={refreshTracking} disabled={loading}>
-                  {loading ? 'Refreshing…' : 'Refresh'}
-                </button>
-                <span className="tracking-tab-hint">
-                  Same cell keeps the same id across frames. Refine masks, then Refresh here after
-                  recomputing quantification.
-                </span>
-              </div>
-              {seriesTracking?.dataset_id ? (
-                <TrackingTree datasetId={seriesTracking.dataset_id} />
-              ) : (
-                <div className="tracking-tab-empty">
-                  No tracking computed yet -- run "Compute Quantification" for this series from the
-                  Quantification page.
+      {open && (
+        <div className="right-panel-body">
+          {rightPanelTab === 'labels' && <PolygonList />}
+          {rightPanelTab === 'quantification' && <FrameMeasurePanel />}
+          {rightPanelTab === 'tracking' &&
+            (isMovie ? (
+              <div className="tracking-tab">
+                <div className="tracking-tab-header">
+                  <button onClick={refreshTracking} disabled={loading}>
+                    {loading ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                  <span className="tracking-tab-hint">
+                    Same cell keeps the same id across frames. Refine masks, then Refresh here
+                    after recomputing quantification.
+                  </span>
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="tracking-tab-empty">Tracking only applies to movies.</div>
-          ))}
-      </div>
+                {seriesTracking?.dataset_id ? (
+                  <TrackingTree datasetId={seriesTracking.dataset_id} />
+                ) : (
+                  <div className="tracking-tab-empty">
+                    No tracking computed yet -- run "Compute Quantification" for this series from
+                    the Quantification page.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="tracking-tab-empty">Tracking only applies to movies.</div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }

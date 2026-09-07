@@ -10,6 +10,7 @@ import { RightPanel } from '../components/viewer/RightPanel';
 import { Toolbar } from '../components/viewer/Toolbar';
 import { useViewerStore } from '../store/useViewerStore';
 import '../components/viewer/ContextMenu.css';
+import '../components/viewer/PanelToggle.css';
 import './Viewer.css';
 
 export function Viewer() {
@@ -25,6 +26,7 @@ export function Viewer() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [seriesMenu, setSeriesMenu] = useState<{ id: number; x: number; y: number } | null>(null);
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
 
   const series = useViewerStore((s) => s.series);
   const setSeries = useViewerStore((s) => s.setSeries);
@@ -138,86 +140,98 @@ export function Viewer() {
 
   return (
     <div className="viewer-page">
-      <aside className="viewer-sidebar">
-        <Link to="/" className="back-link">
-          ← Projects
-        </Link>
-        <Link to={`/project/${pid}/quantification`} className="nav-link">
-          Quantification →
-        </Link>
+      <aside className={`viewer-sidebar${leftPanelOpen ? '' : ' panel-collapsed'}`}>
+        <button
+          className="panel-toggle-btn"
+          onClick={() => setLeftPanelOpen((v) => !v)}
+          title={leftPanelOpen ? 'Hide panel' : 'Show panel'}
+        >
+          {leftPanelOpen ? '‹' : '›'}
+        </button>
 
-        <h3>Image series</h3>
-        <ul className="series-list">
-          {seriesList.map((s) => (
-            <li key={s.id}>
-              <button
-                className={series?.id === s.id ? 'active' : ''}
-                onClick={() => setSeries(s)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setSeriesMenu({ id: s.id, x: e.clientX, y: e.clientY });
-                }}
-                title={`${s.width}x${s.height}, ${s.frame_count} frames, ${s.dtype}`}
+        {leftPanelOpen && (
+          <>
+            <Link to="/" className="back-link">
+              ← Projects
+            </Link>
+            <Link to={`/project/${pid}/quantification`} className="nav-link">
+              Quantification →
+            </Link>
+
+            <h3>Image series</h3>
+            <ul className="series-list">
+              {seriesList.map((s) => (
+                <li key={s.id}>
+                  <button
+                    className={series?.id === s.id ? 'active' : ''}
+                    onClick={() => setSeries(s)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSeriesMenu({ id: s.id, x: e.clientX, y: e.clientY });
+                    }}
+                    title={`${s.width}x${s.height}, ${s.frame_count} frames, ${s.dtype}`}
+                  >
+                    {s.name}
+                    <span className="series-meta">
+                      {s.frame_count} frame{s.frame_count === 1 ? '' : 's'}
+                    </span>
+                  </button>
+                </li>
+              ))}
+              {seriesList.length === 0 && <li className="empty-hint">No series yet</li>}
+            </ul>
+
+            {seriesMenu && (
+              <div
+                className="context-menu"
+                style={{ left: seriesMenu.x, top: seriesMenu.y }}
+                onClick={(e) => e.stopPropagation()}
               >
-                {s.name}
-                <span className="series-meta">
-                  {s.frame_count} frame{s.frame_count === 1 ? '' : 's'}
-                </span>
-              </button>
-            </li>
-          ))}
-          {seriesList.length === 0 && <li className="empty-hint">No series yet</li>}
-        </ul>
+                <button className="context-menu-danger" onClick={() => handleDeleteSeries(seriesMenu.id)}>
+                  Delete series
+                </button>
+              </div>
+            )}
 
-        {seriesMenu && (
-          <div
-            className="context-menu"
-            style={{ left: seriesMenu.x, top: seriesMenu.y }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button className="context-menu-danger" onClick={() => handleDeleteSeries(seriesMenu.id)}>
-              Delete series
-            </button>
-          </div>
+            <div className="add-series">
+              <h4>Add series</h4>
+              <input
+                placeholder="Name"
+                value={newSeriesName}
+                onChange={(e) => setNewSeriesName(e.target.value)}
+              />
+              <div className="add-series-row">
+                <input
+                  placeholder="Server-side folder or .tif path"
+                  value={newSeriesPath}
+                  onChange={(e) => setNewSeriesPath(e.target.value)}
+                />
+                <button onClick={handleRegisterPath} disabled={busy || !newSeriesName || !newSeriesPath}>
+                  Register
+                </button>
+              </div>
+              <div
+                className={`drop-zone${isDragging ? ' dragging' : ''}`}
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".tif,.tiff,.png,.jpg,.jpeg"
+                  onChange={(e) => handleUpload(e.target.files)}
+                  disabled={busy}
+                />
+                <span className="drop-zone-hint">or drag &amp; drop files here</span>
+              </div>
+              {error && <div className="error-text">{error}</div>}
+            </div>
+          </>
         )}
-
-        <div className="add-series">
-          <h4>Add series</h4>
-          <input
-            placeholder="Name"
-            value={newSeriesName}
-            onChange={(e) => setNewSeriesName(e.target.value)}
-          />
-          <div className="add-series-row">
-            <input
-              placeholder="Server-side folder or .tif path"
-              value={newSeriesPath}
-              onChange={(e) => setNewSeriesPath(e.target.value)}
-            />
-            <button onClick={handleRegisterPath} disabled={busy || !newSeriesName || !newSeriesPath}>
-              Register
-            </button>
-          </div>
-          <div
-            className={`drop-zone${isDragging ? ' dragging' : ''}`}
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept=".tif,.tiff,.png,.jpg,.jpeg"
-              onChange={(e) => handleUpload(e.target.files)}
-              disabled={busy}
-            />
-            <span className="drop-zone-hint">or drag &amp; drop files here</span>
-          </div>
-          {error && <div className="error-text">{error}</div>}
-        </div>
       </aside>
 
       <main className="viewer-main">
