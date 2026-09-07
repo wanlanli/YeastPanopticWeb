@@ -1,0 +1,37 @@
+# Optional override: gives sam_service/panoptic_service (the two
+# torch-based services) access to the host's NVIDIA GPU. Without this,
+# docker-compose.yml alone never exposes the host's GPU to any container
+# (that's Docker's default, not something YeastPanopticWeb opts out of) --
+# both services fall back to CPU regardless of what hardware the host has.
+#
+# Prerequisite (host-level, one-time, needs root): the NVIDIA Container
+# Toolkit. If `nvidia-smi` works on the host but this doesn't, that's
+# almost always the missing piece:
+#   https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+# Then verify Docker itself can see the GPU before trying this override:
+#   docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+#
+# Usage (note: TWO -f flags, base file first):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml --env-file .env.docker up -d --build
+#
+# Confirm it worked:
+#   docker compose --env-file .env.docker exec sam_service python3 -c "import torch; print(torch.cuda.is_available())"
+
+services:
+  sam_service:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  panoptic_service:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

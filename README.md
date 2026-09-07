@@ -100,6 +100,22 @@ Logs: `docker compose --env-file .env.docker logs -f [service]`. Stop:
 `docker compose --env-file .env.docker down` (add `-v` to also drop the
 backend's database/upload volume).
 
+**Using a GPU?** By default Docker never exposes the host's GPU to any
+container -- that's true regardless of this project, not something to fix
+in `docker-compose.yml` alone. If this server has an NVIDIA GPU, add the
+`docker-compose.gpu.yml` override (see the comment at the top of that file
+for the one-time host prerequisite -- the NVIDIA Container Toolkit -- and
+how to verify it's working before trying this):
+
+```
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml --env-file .env.docker up -d --build
+```
+
+Confirm it's actually using the GPU (should print `True`):
+```
+docker compose --env-file .env.docker exec sam_service python3 -c "import torch; print(torch.cuda.is_available())"
+```
+
 ### Option B: plain Python envs
 
 One-time setup, then one script starts everything:
