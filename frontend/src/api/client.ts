@@ -1,6 +1,7 @@
 import type {
   FeatureTablePage,
   FrameMeasureResult,
+  MeasurementRegion,
   PolygonAnnotation,
   Project,
   QuantificationDataset,
@@ -154,11 +155,13 @@ export const api = {
     name: string,
     kind: 'features' | 'tracking',
     file: File,
+    seriesId?: number,
   ) => {
     const form = new FormData();
     form.append('project_id', String(projectId));
     form.append('name', name);
     form.append('kind', kind);
+    if (seriesId !== undefined) form.append('series_id', String(seriesId));
     form.append('file', file);
     return request<QuantificationDataset>('/api/quantification/upload', {
       method: 'POST',
@@ -182,5 +185,18 @@ export const api = {
     request<QuantificationDataset[]>('/api/quantification/compute', {
       method: 'POST',
       body: JSON.stringify({ series_id: seriesId, fill_gaps: fillGaps, pixel_size: pixelSize }),
+    }),
+  /** Geometry + one channel's intensity (mean/max/min) over the selected
+   * sub-region of every cell on every frame -- no tracking, each row is one
+   * frame's own instance of a cell. */
+  measureRegionIntensity: (seriesId: number, channelIndex: number, region: MeasurementRegion, pixelSize = 1) =>
+    request<QuantificationDataset[]>('/api/quantification/measure', {
+      method: 'POST',
+      body: JSON.stringify({
+        series_id: seriesId,
+        channel_index: channelIndex,
+        region,
+        pixel_size: pixelSize,
+      }),
     }),
 };

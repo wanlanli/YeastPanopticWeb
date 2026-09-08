@@ -29,77 +29,83 @@
   font-size: 13px;
 }
 
-.quant-upload,
-.quant-compute {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.quant-series-select {
+  background: #1a1a19;
+  border: 1px solid #383835;
+  color: #eee;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.quant-compute {
-  width: 100%;
-  padding: 8px 10px;
+.quant-measure {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 10px 14px;
   background: #14181f;
   border: 1px solid #2a2f3a;
   border-radius: 6px;
 }
 
-.quant-compute select {
+.quant-measure h3 {
+  margin: 0;
+  font-size: 13px;
+  color: #c3c2b7;
+  flex-shrink: 0;
+}
+
+.quant-measure-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ccc;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.quant-measure-field select,
+.quant-measure-field input {
   background: #1a1a19;
   border: 1px solid #383835;
   color: #eee;
   border-radius: 4px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   font-size: 12px;
 }
 
-.quant-compute button {
+.quant-measure-field input[type='number'] {
+  width: 56px;
+}
+
+.quant-measure button {
   background: #3d63dd;
   border: 1px solid #3d63dd;
   color: #fff;
   border-radius: 4px;
-  padding: 6px 12px;
+  padding: 6px 14px;
   font-size: 12px;
   cursor: pointer;
 }
 
-.quant-compute button:disabled {
+.quant-measure button:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.quant-compute-hint {
+.quant-measure-hint {
   color: #888;
-  font-size: 11px;
+  font-size: 12px;
 }
 
-.quant-fill-gaps {
+.quant-upload {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
-  color: #ccc;
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.quant-resolution {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: #ccc;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.quant-resolution input {
-  width: 56px;
-  background: #1a1a19;
-  border: 1px solid #383835;
-  color: #eee;
-  border-radius: 4px;
-  padding: 4px 6px;
-  font-size: 12px;
+  gap: 8px;
 }
 
 .quant-upload input[type='text'],
@@ -112,13 +118,9 @@
   font-size: 12px;
 }
 
-.quant-upload select {
-  background: #1a1a19;
-  border: 1px solid #383835;
-  color: #eee;
-  border-radius: 4px;
-  padding: 6px 8px;
-  font-size: 12px;
+.quant-upload-hint {
+  color: #666;
+  font-size: 11px;
 }
 
 .error-text {
@@ -128,14 +130,12 @@
 
 .quant-body {
   flex: 1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
+  display: flex;
   min-height: 0;
 }
 
 .quant-section {
+  flex: 1;
   background: #17171c;
   border: 1px solid #2a2a33;
   border-radius: 8px;
@@ -146,10 +146,6 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-}
-
-.quant-section-wide {
-  grid-column: 1 / -1;
 }
 
 .quant-section-header {
@@ -213,8 +209,6 @@
   }
 
   .quant-body {
-    grid-template-columns: 1fr;
-    grid-template-rows: none;
-    grid-auto-rows: 420px;
+    min-height: 420px;
   }
 }

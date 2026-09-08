@@ -11,6 +11,16 @@ class ComputeQuantificationRequest(BaseModel):
     fill_gaps: bool = False
 
 
+class RegionIntensityRequest(BaseModel):
+    series_id: int
+    channel_index: int
+    # cytoplasm = whole cell area, membrane = CellMate's sampled contour
+    # points (outline), skeleton = CellMate's sampled centerline points
+    region: str
+    pixel_size: float = 1.0
+    sampling_interval: int = 5
+
+
 class QuantificationDatasetOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

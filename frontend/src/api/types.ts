@@ -49,6 +49,10 @@ export interface FrameMeasureResult {
   rows: Record<string, unknown>[];
 }
 
+/** Which part of the cell to measure a channel's intensity from -- see
+ * RegionDemo for the visual explanation of each. */
+export type MeasurementRegion = 'cytoplasm' | 'membrane' | 'skeleton';
+
 export interface SeriesTrackingMap {
   dataset_id: number | null;
   /** {frame_index (string) -> {original_polygon_label (string) -> track_id}} */
@@ -58,6 +62,7 @@ export interface SeriesTrackingMap {
 export interface QuantificationDataset {
   id: number;
   project_id: number;
+  series_id: number | null;
   name: string;
   kind: 'features' | 'tracking';
   uploaded_at: string;

@@ -41,6 +41,12 @@ GEOMETRY_COLUMNS = [
 ]
 INTENSITY_PROPERTIES = ("label", "intensity_mean", "intensity_max", "intensity_min")
 
+# Where in the cell to measure intensity from -- see compute_region_intensity.
+REGION_CYTOPLASM = "cytoplasm"  # the whole cell area
+REGION_MEMBRANE = "membrane"  # CellMate's sampled contour/outline points
+REGION_SKELETON = "skeleton"  # CellMate's sampled centerline points
+REGIONS = (REGION_CYTOPLASM, REGION_MEMBRANE, REGION_SKELETON)
+
 
 def _ensure_cellmate_on_path() -> None:
     global _cellmate_ready
@@ -130,6 +136,135 @@ def compute_intensity(
     df = df.rename(columns=rename)
     df["label"] = df["label"].astype(int)
     return df
+
+
+def _sample_intensity_at_points(intensity_image: np.ndarray, points: np.ndarray) -> np.ndarray:
+    """Nearest-pixel intensity values at each (row, col) point -- CellMate's
+    coordinate()/skeleton() points are sub-pixel (sampled along a fitted
+    contour/centerline), so this rounds to the nearest actual pixel rather
+    than requiring exact integer coordinates."""
+    if len(points) == 0:
+        return np.array([], dtype=np.float32)
+    points = np.asarray(points)
+    rows = np.clip(np.round(points[:, 0]).astype(int), 0, intensity_image.shape[0] - 1)
+    cols = np.clip(np.round(points[:, 1]).astype(int), 0, intensity_image.shape[1] - 1)
+    return intensity_image[rows, cols]
+
+
+def compute_region_intensity(
+    mask: np.ndarray,
+    intensity_image: np.ndarray,
+    region: str,
+    pixel_size: float = 1.0,
+    sampling_interval: int = 5,
+) -> pd.DataFrame:
+    """Per-object intensity stats (mean/max/min) from one channel's raw
+    frame, over a specific sub-region of each cell rather than always the
+    whole area:
+
+    - "cytoplasm": every pixel in the cell -- the same whole-region stats
+      compute_intensity already gives, just single-channel.
+    - "membrane": CellMate's sampled contour points (ImageMeasure.coordinate)
+      -- the cell's outline/edge, not its interior.
+    - "skeleton": CellMate's sampled centerline points (ImageMeasure.skeleton).
+
+    Returns columns [label, intensity_mean, intensity_max, intensity_min]."""
+    columns = ["label", "intensity_mean", "intensity_max", "intensity_min"]
+    if not np.any(mask):
+        return pd.DataFrame(columns=columns)
+
+    if region == REGION_CYTOPLASM:
+        df = compute_intensity(mask, intensity_image[..., np.newaxis], ["v"])
+        return df.rename(
+            columns={"intensity_mean_v": "intensity_mean", "intensity_max_v": "intensity_max", "intensity_min_v": "intensity_min"}
+        )[columns]
+
+    if region not in (REGION_MEMBRANE, REGION_SKELETON):
+        raise ValueError(f"Unknown region {region!r} -- expected one of {REGIONS}")
+
+    _ensure_cellmate_on_path()
+    from cellmate.image_measure import ImageMeasure
+
+    measure = ImageMeasure(
+        mask.astype(np.int32),
+        pixel_size=pixel_size,
+        sampling_interval=sampling_interval * pixel_size,
+        equidistant=True,
+    )
+    rows = []
+    for i, label in enumerate(measure.labels):
+        points = measure.coordinate(index=i) if region == REGION_MEMBRANE else measure.skeleton(index=i)
+        values = _sample_intensity_at_points(intensity_image, points)
+        if len(values) == 0:
+            continue
+        rows.append(
+            {
+                "label": int(label),
+                "intensity_mean": float(values.mean()),
+                "intensity_max": float(values.max()),
+                "intensity_min": float(values.min()),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def compute_series_measurements(
+    db: Session,
+    series: ImageSeries,
+    channel_index: int,
+    region: str,
+    pixel_size: float = 1.0,
+    sampling_interval: int = 5,
+) -> pd.DataFrame:
+    """The main quantification table for one series: geometry (area,
+    skeleton lengths, eccentricity, ...) merged with one channel's
+    intensity (mean/max/min) over the selected sub-region of each cell
+    (cytoplasm/membrane/skeleton -- see compute_region_intensity), for
+    every cell on every frame.
+
+    Deliberately no cross-frame tracking here -- "cell" is each frame's own
+    instance number (the 1000*semantic+instance label's instance part), not
+    a stable identity linked across frames. For that, see
+    compute_series_quantification / the Viewer's Tracking tab, which run
+    CellMate's tracker separately."""
+    rows = []
+    for frame_index in range(series.frame_count):
+        mask = frame_mask(db, series, frame_index)
+        if not np.any(mask):
+            continue
+        geom = compute_geometry(mask, pixel_size=pixel_size, sampling_interval=sampling_interval)
+        if geom.empty:
+            continue
+        channel_frame = image_io.read_frame(
+            series.source_type, series.path, frame_index, channel_index
+        ).astype(np.float32)
+        inten = compute_region_intensity(
+            mask, channel_frame, region, pixel_size=pixel_size, sampling_interval=sampling_interval
+        )
+        merged = geom.merge(inten, on="label", how="left")
+        merged.insert(0, "cell", merged["label"] % 1000)
+        merged.insert(0, "frame", frame_index)
+        rows.append(merged)
+
+    if not rows:
+        return pd.DataFrame()
+    result = pd.concat(rows, ignore_index=True)
+    ordered = [
+        "frame",
+        "cell",
+        "type",
+        "area",
+        "skeleton_major_length",
+        "skeleton_minor_length",
+        "eccentricity",
+        "orientation",
+        "centroid_0",
+        "centroid_1",
+        "intensity_mean",
+        "intensity_max",
+        "intensity_min",
+    ]
+    return result[[c for c in ordered if c in result.columns]].sort_values(["cell", "frame"])
 
 
 def compute_tracking(

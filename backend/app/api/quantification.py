@@ -14,6 +14,7 @@ from app.schemas.quantification import (
     ComputeQuantificationRequest,
     FeatureTablePage,
     QuantificationDatasetOut,
+    RegionIntensityRequest,
     TrackingTree,
     TsneResult,
 )
@@ -41,6 +42,7 @@ async def upload_dataset(
     project_id: int = Form(...),
     name: str = Form(...),
     kind: str = Form(...),
+    series_id: int | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
@@ -61,7 +63,7 @@ async def upload_dataset(
         raise HTTPException(400, f"Could not parse file: {exc}") from exc
 
     dataset = QuantificationDataset(
-        project_id=project_id, name=name, kind=kind, file_path=str(dest)
+        project_id=project_id, series_id=series_id, name=name, kind=kind, file_path=str(dest)
     )
     db.add(dataset)
     db.commit()
@@ -136,6 +138,62 @@ def compute_quantification(
             400, "No segmented frames found for this series -- segment it first."
         )
     return created
+
+
+@router.post("/measure", response_model=list[QuantificationDatasetOut])
+def measure(body: RegionIntensityRequest, db: Session = Depends(get_db)):
+    """The main quantification table for one series: geometry merged with
+    one fluorescent channel's intensity (mean/max/min) over a specific
+    sub-region of each cell (whole area / outline / centerline -- see
+    RegionIntensityRequest), for every cell on every frame. No tracking --
+    each row is one frame's own instance of a cell, not linked across
+    frames (see /compute for that). Registered as a downloadable/viewable
+    "features" dataset."""
+    series = db.get(ImageSeries, body.series_id)
+    if not series:
+        raise HTTPException(404, "Series not found")
+    if body.region not in quantification_compute.REGIONS:
+        raise HTTPException(400, f"region must be one of {quantification_compute.REGIONS}")
+
+    channel_names = dict(quantification_compute._series_non_dic_channels(series))
+    if body.channel_index not in channel_names:
+        raise HTTPException(
+            400,
+            f"channel_index {body.channel_index} is not a valid fluorescent channel for this "
+            f"series -- choices: {sorted(channel_names)}",
+        )
+
+    try:
+        df = quantification_compute.compute_series_measurements(
+            db,
+            series,
+            channel_index=body.channel_index,
+            region=body.region,
+            pixel_size=body.pixel_size,
+            sampling_interval=body.sampling_interval,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Measurement failed: {exc}") from exc
+
+    if df.empty:
+        raise HTTPException(400, "No segmented frames found for this series -- segment it first.")
+
+    dest = QUANT_DIR / f"{uuid.uuid4()}.csv"
+    df.to_csv(dest, index=False)
+    channel_name = channel_names[body.channel_index]
+    dataset = QuantificationDataset(
+        project_id=series.project_id,
+        series_id=series.id,
+        name=f"{series.name} -- {channel_name} {body.region}",
+        kind="features",
+        file_path=str(dest),
+    )
+    db.add(dataset)
+    db.commit()
+    db.refresh(dataset)
+    return [dataset]
 
 
 def _get_dataset(dataset_id: int, db: Session) -> QuantificationDataset:

@@ -1,0 +1,14 @@
+.region-demo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #17171c;
+  border: 1px solid #2a2a33;
+  border-radius: 6px;
+  padding: 4px 10px 4px 4px;
+}
+
+.region-demo-label {
+  font-size: 12px;
+  color: #ccc;
+}
