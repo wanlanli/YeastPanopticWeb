@@ -16,8 +16,27 @@
 # Then: cp .env.example .env, edit the paths in it (model repo, checkpoint,
 # CellMate -- see the comments in that file), set PYTHON_ENV_MANAGER=conda
 # in it, and ./scripts/run_all.sh starts everything.
+#
+# Some machines (often ones set up for/by NVIDIA NGC container workflows)
+# have pip pre-configured to check pypi.ngc.nvidia.com -- NVIDIA's own
+# internal PyPI mirror -- ahead of/instead of the public PyPI. If that
+# hostname doesn't resolve from this network (common outside an actual NGC
+# container), every torch-related install (torch, triton, the
+# nvidia-*-cu12 wheels) hangs retrying it before failing. Everything this
+# project needs is also on the public PyPI, so pip installs below are
+# pinned to it explicitly rather than depending on whatever's already
+# configured system/user-wide. Override with PIP_INDEX_URL=... before
+# running this script if you deliberately want a different mirror (e.g. an
+# internal one that isn't broken).
 
 set -euo pipefail
+export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.org/simple}"
+# A pip.conf/PIP_EXTRA_INDEX_URL pointing at the broken mirror would still
+# make pip check it even with PIP_INDEX_URL overridden above (index-url and
+# extra-index-url are independent settings) -- clear it unless the caller
+# explicitly set one, since pip env vars take precedence over pip.conf.
+export PIP_EXTRA_INDEX_URL="${PIP_EXTRA_INDEX_URL:-}"
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
