@@ -142,11 +142,13 @@ def compute_quantification(
 
 @router.post("/measure", response_model=list[QuantificationDatasetOut])
 def measure(body: RegionIntensityRequest, db: Session = Depends(get_db)):
-    """The main quantification table for one series: geometry merged with
-    one fluorescent channel's intensity (mean/max/min) over a specific
-    sub-region of each cell (whole area / outline / centerline -- see
-    RegionIntensityRequest), for every cell on every frame. No tracking --
-    each row is one frame's own instance of a cell, not linked across
+    """The main quantification table for one series: one fluorescent
+    channel's intensity over a specific sub-region of each cell -- whole
+    area (one row per cell) or outline/centerline (one row per SAMPLED
+    POINT along it, an intensity profile rather than a single average --
+    see compute_region_intensity), for every cell on every frame, with an
+    explicit opt-in selection of geometry columns to merge on. No tracking
+    -- each row is one frame's own instance of a cell, not linked across
     frames (see /compute for that). Registered as a downloadable/viewable
     "features" dataset."""
     series = db.get(ImageSeries, body.series_id)
@@ -154,6 +156,13 @@ def measure(body: RegionIntensityRequest, db: Session = Depends(get_db)):
         raise HTTPException(404, "Series not found")
     if body.region not in quantification_compute.REGIONS:
         raise HTTPException(400, f"region must be one of {quantification_compute.REGIONS}")
+    unknown_features = set(body.geometry_features) - set(quantification_compute.SELECTABLE_GEOMETRY_FEATURES)
+    if unknown_features:
+        raise HTTPException(
+            400,
+            f"Unknown geometry_features {sorted(unknown_features)} -- choices: "
+            f"{quantification_compute.SELECTABLE_GEOMETRY_FEATURES}",
+        )
 
     channel_names = dict(quantification_compute._series_non_dic_channels(series))
     if body.channel_index not in channel_names:
@@ -171,6 +180,7 @@ def measure(body: RegionIntensityRequest, db: Session = Depends(get_db)):
             region=body.region,
             pixel_size=body.pixel_size,
             sampling_interval=body.sampling_interval,
+            geometry_features=body.geometry_features,
         )
     except RuntimeError as exc:
         raise HTTPException(400, str(exc)) from exc

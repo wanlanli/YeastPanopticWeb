@@ -151,6 +151,20 @@ def _sample_intensity_at_points(intensity_image: np.ndarray, points: np.ndarray)
     return intensity_image[rows, cols]
 
 
+# Geometry columns a caller can opt into merging onto the measurement
+# table (see compute_series_measurements's geometry_features) -- "label"
+# and "type" are always the identity columns, not optional.
+SELECTABLE_GEOMETRY_FEATURES = [
+    "area",
+    "skeleton_major_length",
+    "skeleton_minor_length",
+    "eccentricity",
+    "orientation",
+    "centroid_0",
+    "centroid_1",
+]
+
+
 def compute_region_intensity(
     mask: np.ndarray,
     intensity_image: np.ndarray,
@@ -158,29 +172,44 @@ def compute_region_intensity(
     pixel_size: float = 1.0,
     sampling_interval: int = 5,
 ) -> pd.DataFrame:
-    """Per-object intensity stats (mean/max/min) from one channel's raw
-    frame, over a specific sub-region of each cell rather than always the
-    whole area:
+    """Per-cell intensity from one channel's raw frame, over a specific
+    sub-region of each cell rather than always the whole area:
 
-    - "cytoplasm": every pixel in the cell -- the same whole-region stats
-      compute_intensity already gives, just single-channel.
+    - "cytoplasm": every pixel in the cell -- mean/max/min over the whole
+      area (one row per cell; a filled area has no natural point order, so
+      a single summary is what makes sense here).
     - "membrane": CellMate's sampled contour points (ImageMeasure.coordinate)
-      -- the cell's outline/edge, not its interior.
-    - "skeleton": CellMate's sampled centerline points (ImageMeasure.skeleton).
+      -- the cell's outline/edge, not its interior. One row PER POINT
+      (point_index, its (row, col), and the intensity there) rather than
+      one averaged number, so you can see how intensity varies around the
+      membrane -- e.g. a polarized/localized signal wouldn't show up at all
+      in a mean.
+    - "skeleton": same, but CellMate's sampled centerline points
+      (ImageMeasure.skeleton) -- an intensity profile along the cell's
+      centerline.
 
-    Returns columns [label, intensity_mean, intensity_max, intensity_min]."""
-    columns = ["label", "intensity_mean", "intensity_max", "intensity_min"]
-    if not np.any(mask):
-        return pd.DataFrame(columns=columns)
-
+    Returns [label, intensity_mean, intensity_max, intensity_min] for
+    cytoplasm, or [label, point_index, coord_row, coord_col, intensity] for
+    membrane/skeleton."""
     if region == REGION_CYTOPLASM:
+        columns = ["label", "intensity_mean", "intensity_max", "intensity_min"]
+        if not np.any(mask):
+            return pd.DataFrame(columns=columns)
         df = compute_intensity(mask, intensity_image[..., np.newaxis], ["v"])
         return df.rename(
-            columns={"intensity_mean_v": "intensity_mean", "intensity_max_v": "intensity_max", "intensity_min_v": "intensity_min"}
+            columns={
+                "intensity_mean_v": "intensity_mean",
+                "intensity_max_v": "intensity_max",
+                "intensity_min_v": "intensity_min",
+            }
         )[columns]
 
     if region not in (REGION_MEMBRANE, REGION_SKELETON):
         raise ValueError(f"Unknown region {region!r} -- expected one of {REGIONS}")
+
+    columns = ["label", "point_index", "coord_row", "coord_col", "intensity"]
+    if not np.any(mask):
+        return pd.DataFrame(columns=columns)
 
     _ensure_cellmate_on_path()
     from cellmate.image_measure import ImageMeasure
@@ -193,18 +222,18 @@ def compute_region_intensity(
     )
     rows = []
     for i, label in enumerate(measure.labels):
-        points = measure.coordinate(index=i) if region == REGION_MEMBRANE else measure.skeleton(index=i)
+        points = np.asarray(measure.coordinate(index=i) if region == REGION_MEMBRANE else measure.skeleton(index=i))
         values = _sample_intensity_at_points(intensity_image, points)
-        if len(values) == 0:
-            continue
-        rows.append(
-            {
-                "label": int(label),
-                "intensity_mean": float(values.mean()),
-                "intensity_max": float(values.max()),
-                "intensity_min": float(values.min()),
-            }
-        )
+        for point_index, ((row, col), value) in enumerate(zip(points, values)):
+            rows.append(
+                {
+                    "label": int(label),
+                    "point_index": point_index,
+                    "coord_row": float(row),
+                    "coord_col": float(col),
+                    "intensity": float(value),
+                }
+            )
     return pd.DataFrame(rows, columns=columns)
 
 
@@ -215,25 +244,31 @@ def compute_series_measurements(
     region: str,
     pixel_size: float = 1.0,
     sampling_interval: int = 5,
+    geometry_features: list[str] | None = None,
 ) -> pd.DataFrame:
-    """The main quantification table for one series: geometry (area,
-    skeleton lengths, eccentricity, ...) merged with one channel's
-    intensity (mean/max/min) over the selected sub-region of each cell
-    (cytoplasm/membrane/skeleton -- see compute_region_intensity), for
-    every cell on every frame.
+    """The main quantification table for one series: one channel's
+    intensity over the selected sub-region of each cell (cytoplasm/
+    membrane/skeleton -- see compute_region_intensity), for every cell on
+    every frame, with an explicit, opt-in selection of geometry columns
+    (from SELECTABLE_GEOMETRY_FEATURES) merged on -- geometry isn't mixed
+    in by default, since the table's actual subject is the intensity
+    measurement, not geometry (see compute_series_quantification for a
+    geometry-only/all-columns table instead).
 
     Deliberately no cross-frame tracking here -- "cell" is each frame's own
     instance number (the 1000*semantic+instance label's instance part), not
     a stable identity linked across frames. For that, see
     compute_series_quantification / the Viewer's Tracking tab, which run
     CellMate's tracker separately."""
+    geometry_features = geometry_features or []
+    unknown = set(geometry_features) - set(SELECTABLE_GEOMETRY_FEATURES)
+    if unknown:
+        raise ValueError(f"Unknown geometry feature(s): {sorted(unknown)}")
+
     rows = []
     for frame_index in range(series.frame_count):
         mask = frame_mask(db, series, frame_index)
         if not np.any(mask):
-            continue
-        geom = compute_geometry(mask, pixel_size=pixel_size, sampling_interval=sampling_interval)
-        if geom.empty:
             continue
         channel_frame = image_io.read_frame(
             series.source_type, series.path, frame_index, channel_index
@@ -241,30 +276,31 @@ def compute_series_measurements(
         inten = compute_region_intensity(
             mask, channel_frame, region, pixel_size=pixel_size, sampling_interval=sampling_interval
         )
-        merged = geom.merge(inten, on="label", how="left")
+        if inten.empty:
+            continue
+
+        # "type" is always attached as an identity column (cheap, useful
+        # for filtering) regardless of whether any geometry_features were
+        # selected; the selected ones (if any) come along with it.
+        geom = compute_geometry(mask, pixel_size=pixel_size, sampling_interval=sampling_interval)
+        merged = inten.merge(geom[["label", "type", *geometry_features]], on="label", how="left")
         merged.insert(0, "cell", merged["label"] % 1000)
         merged.insert(0, "frame", frame_index)
+        merged = merged.drop(columns=["label"])
         rows.append(merged)
 
     if not rows:
         return pd.DataFrame()
     result = pd.concat(rows, ignore_index=True)
-    ordered = [
-        "frame",
-        "cell",
-        "type",
-        "area",
-        "skeleton_major_length",
-        "skeleton_minor_length",
-        "eccentricity",
-        "orientation",
-        "centroid_0",
-        "centroid_1",
-        "intensity_mean",
-        "intensity_max",
-        "intensity_min",
-    ]
-    return result[[c for c in ordered if c in result.columns]].sort_values(["cell", "frame"])
+
+    if region == REGION_CYTOPLASM:
+        tail = ["intensity_mean", "intensity_max", "intensity_min"]
+        sort_cols = ["cell", "frame"]
+    else:
+        tail = ["point_index", "coord_row", "coord_col", "intensity"]
+        sort_cols = ["cell", "frame", "point_index"]
+    ordered = ["frame", "cell", "type", *geometry_features, *tail]
+    return result[[c for c in ordered if c in result.columns]].sort_values(sort_cols)
 
 
 def compute_tracking(

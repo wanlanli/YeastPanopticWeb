@@ -19,6 +19,10 @@ class RegionIntensityRequest(BaseModel):
     region: str
     pixel_size: float = 1.0
     sampling_interval: int = 5
+    # opt-in geometry columns to merge onto the result (see
+    # quantification_compute.SELECTABLE_GEOMETRY_FEATURES) -- none by
+    # default, geometry isn't mixed in unless asked for
+    geometry_features: list[str] = []
 
 
 class QuantificationDatasetOut(BaseModel):

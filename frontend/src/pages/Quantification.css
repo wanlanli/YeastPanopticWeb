@@ -81,6 +81,51 @@
   width: 56px;
 }
 
+.quant-geometry-picker-wrap {
+  position: relative;
+}
+
+.quant-measure .quant-geometry-toggle.quant-geometry-toggle {
+  background: #1a1a19;
+  border: 1px solid #383835;
+  color: #eee;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.quant-measure .quant-geometry-toggle.quant-geometry-toggle.active {
+  background: #3d63dd;
+  border-color: #3d63dd;
+}
+
+.quant-geometry-picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  background: #1e1e24;
+  border: 1px solid #3a3a45;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.quant-geometry-picker label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #ccc;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
 .quant-measure button {
   background: #3d63dd;
   border: 1px solid #3d63dd;

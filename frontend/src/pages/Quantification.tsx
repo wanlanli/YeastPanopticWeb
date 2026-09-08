@@ -8,6 +8,17 @@ import './Quantification.css';
 
 const REGIONS: MeasurementRegion[] = ['cytoplasm', 'membrane', 'skeleton'];
 
+// Matches backend's SELECTABLE_GEOMETRY_FEATURES (quantification_compute.py)
+const GEOMETRY_FEATURES: { key: string; label: string }[] = [
+  { key: 'area', label: 'Area' },
+  { key: 'skeleton_major_length', label: 'Skeleton major length' },
+  { key: 'skeleton_minor_length', label: 'Skeleton minor length' },
+  { key: 'eccentricity', label: 'Eccentricity' },
+  { key: 'orientation', label: 'Orientation' },
+  { key: 'centroid_0', label: 'Centroid (row)' },
+  { key: 'centroid_1', label: 'Centroid (col)' },
+];
+
 export function Quantification() {
   const { projectId } = useParams();
   const pid = Number(projectId);
@@ -21,9 +32,22 @@ export function Quantification() {
 
   const [channelIndex, setChannelIndex] = useState<number | null>(null);
   const [region, setRegion] = useState<MeasurementRegion>('cytoplasm');
+  const [geometryFeatures, setGeometryFeatures] = useState<string[]>([]);
+  const [showGeometryPicker, setShowGeometryPicker] = useState(false);
   const [resolution, setResolution] = useState(1);
   const [measuring, setMeasuring] = useState(false);
   const [measureError, setMeasureError] = useState<string | null>(null);
+
+  function toggleGeometryFeature(key: string) {
+    setGeometryFeatures((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  }
+
+  useEffect(() => {
+    if (!showGeometryPicker) return;
+    const close = () => setShowGeometryPicker(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [showGeometryPicker]);
 
   const [uploadName, setUploadName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -77,7 +101,7 @@ export function Quantification() {
     setMeasuring(true);
     setMeasureError(null);
     try {
-      const [created] = await api.measureRegionIntensity(seriesId, channelIndex, region, resolution);
+      const [created] = await api.measureRegionIntensity(seriesId, channelIndex, region, geometryFeatures, resolution);
       await refreshDatasets();
       if (created) setFeatureId(created.id);
     } catch (e) {
@@ -162,6 +186,33 @@ export function Quantification() {
               </select>
             </label>
             <RegionDemo region={region} />
+            <div className="quant-geometry-picker-wrap">
+              <button
+                type="button"
+                className={`quant-geometry-toggle${geometryFeatures.length ? ' active' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowGeometryPicker((v) => !v);
+                }}
+                title="Optionally include geometry columns (area, eccentricity, ...) alongside the intensity measurement"
+              >
+                Geometry columns{geometryFeatures.length ? ` (${geometryFeatures.length})` : ''}
+              </button>
+              {showGeometryPicker && (
+                <div className="quant-geometry-picker" onClick={(e) => e.stopPropagation()}>
+                  {GEOMETRY_FEATURES.map((f) => (
+                    <label key={f.key}>
+                      <input
+                        type="checkbox"
+                        checked={geometryFeatures.includes(f.key)}
+                        onChange={() => toggleGeometryFeature(f.key)}
+                      />
+                      {f.label}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
             <label className="quant-measure-field">
               Resolution
               <input

@@ -186,16 +186,25 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ series_id: seriesId, fill_gaps: fillGaps, pixel_size: pixelSize }),
     }),
-  /** Geometry + one channel's intensity (mean/max/min) over the selected
-   * sub-region of every cell on every frame -- no tracking, each row is one
+  /** One channel's intensity over the selected sub-region of every cell on
+   * every frame -- whole area (one row per cell) or outline/centerline (one
+   * row per sampled point, an intensity profile) -- plus an opt-in
+   * selection of geometry columns merged on. No tracking, each row is one
    * frame's own instance of a cell. */
-  measureRegionIntensity: (seriesId: number, channelIndex: number, region: MeasurementRegion, pixelSize = 1) =>
+  measureRegionIntensity: (
+    seriesId: number,
+    channelIndex: number,
+    region: MeasurementRegion,
+    geometryFeatures: string[] = [],
+    pixelSize = 1,
+  ) =>
     request<QuantificationDataset[]>('/api/quantification/measure', {
       method: 'POST',
       body: JSON.stringify({
         series_id: seriesId,
         channel_index: channelIndex,
         region,
+        geometry_features: geometryFeatures,
         pixel_size: pixelSize,
       }),
     }),
