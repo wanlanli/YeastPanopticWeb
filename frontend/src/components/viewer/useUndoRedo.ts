@@ -19,7 +19,11 @@ export function useUndoRedo() {
   const canRedo = useViewerStore((s) => s.future.length > 0);
 
   async function recreate(p: PolygonAnnotation): Promise<PolygonAnnotation> {
-    const created = await api.createPolygon(series!.id, frameIndex, p.points, p.source, p.label);
+    // Undo/redo restores the exact object that was there before -- unlike a
+    // brand-new draw/auto-segment result, this must keep its original label
+    // (not get a freshly-assigned one), or its identity/type/color would
+    // silently change.
+    const created = await api.createPolygon(series!.id, frameIndex, p.points, p.source, { label: p.label });
     upsertPolygon(created);
     return created;
   }

@@ -80,16 +80,28 @@ export const api = {
   // Annotations
   listPolygons: (seriesId: number, frameIndex: number) =>
     request<PolygonAnnotation[]>(`/api/series/${seriesId}/frame/${frameIndex}/polygons`),
+  /** `classId` (preferred for any brand-new object) lets the backend pick
+   * the next unused `1000*classId + instance` label itself, scanned across
+   * the whole series -- never colliding with an existing object on another
+   * frame, unlike computing it client-side from just the current frame's
+   * polygons. Pass an explicit `label` instead only when the caller already
+   * knows the exact label it wants (e.g. nothing left that needs this --
+   * kept for backward compatibility). */
   createPolygon: (
     seriesId: number,
     frameIndex: number,
     points: [number, number][],
     source: 'manual' | 'model' = 'manual',
-    label = '',
+    labelOrClassId: { label: string } | { classId: number } = { label: '' },
   ) =>
     request<PolygonAnnotation>(`/api/series/${seriesId}/frame/${frameIndex}/polygons`, {
       method: 'POST',
-      body: JSON.stringify({ points, source, label }),
+      body: JSON.stringify({
+        points,
+        source,
+        label: 'label' in labelOrClassId ? labelOrClassId.label : '',
+        class_id: 'classId' in labelOrClassId ? labelOrClassId.classId : undefined,
+      }),
     }),
   updatePolygon: (
     polygonId: number,

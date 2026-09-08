@@ -20,7 +20,7 @@ import { api } from '../../api/client';
 import type { PolygonAnnotation } from '../../api/types';
 import { DEFAULT_SEGMENT_SETTINGS, useViewerStore, type Tool } from '../../store/useViewerStore';
 import { BufferBar } from './BufferBar';
-import { CLASS_IDS, classDisplayName, classFromLabel, colorForClass, textColorForClass } from './colorByClass';
+import { CLASS_IDS, classDisplayName, colorForClass, textColorForClass } from './colorByClass';
 import { useDraftActions } from './useDraftActions';
 import { useUndoRedo } from './useUndoRedo';
 import './Toolbar.css';
@@ -133,28 +133,21 @@ export function Toolbar() {
   }
 
   /** Run the panoptic model on one frame and create a polygon per detected
-   * instance, keeping instance numbers (the `1000 * class + instance` label
-   * scheme) from colliding with whatever's already on that frame. */
+   * instance. Instance numbers (the `1000 * class + instance` label scheme)
+   * are assigned by the backend, scanned across the whole series -- not
+   * computed here from `existing` -- so they never collide with an object
+   * on a different frame (or one a concurrent create just added). */
   async function segmentFrame(
     seriesId: number,
     frameIdx: number,
-    existing: PolygonAnnotation[],
     signal?: AbortSignal,
   ): Promise<PolygonAnnotation[]> {
     const { predictions } = await api.predictFrame(seriesId, frameIdx, segmentSettings, signal);
-    const nextInstance = new Map<number, number>();
-    for (const p of existing) {
-      const classId = classFromLabel(p.label);
-      if (classId === null) continue;
-      const instance = Number(p.label) - classId * 1000;
-      nextInstance.set(classId, Math.max(nextInstance.get(classId) ?? 0, instance));
-    }
     const created: PolygonAnnotation[] = [];
     for (const pred of predictions) {
-      const instance = (nextInstance.get(pred.class_id) ?? 0) + 1;
-      nextInstance.set(pred.class_id, instance);
-      const label = String(pred.class_id * 1000 + instance);
-      created.push(await api.createPolygon(seriesId, frameIdx, pred.points, 'model', label));
+      created.push(
+        await api.createPolygon(seriesId, frameIdx, pred.points, 'model', { classId: pred.class_id }),
+      );
     }
     return created;
   }
@@ -165,7 +158,7 @@ export function Toolbar() {
     autoSegmentAbortRef.current = controller;
     setAutoSegmenting(true);
     try {
-      const created = await segmentFrame(series.id, frameIndex, polygons, controller.signal);
+      const created = await segmentFrame(series.id, frameIndex, controller.signal);
       for (const p of created) upsertPolygon(p);
       if (created.length > 0) pushAction({ type: 'createMany', polygons: created });
     } catch (err) {
@@ -205,8 +198,7 @@ export function Toolbar() {
     for (let f = 0; f < series.frame_count; f++) {
       if (batchStopRef.current) break;
       try {
-        const existingForFrame = await api.listPolygons(series.id, f);
-        const created = await segmentFrame(series.id, f, existingForFrame);
+        const created = await segmentFrame(series.id, f);
         if (f === frameIndex) {
           for (const p of created) upsertPolygon(p);
         }

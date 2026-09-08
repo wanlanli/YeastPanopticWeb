@@ -19,6 +19,28 @@ from app.services.segmentation.http_model import SegmentationServiceError
 router = APIRouter(prefix="/api/series", tags=["annotations"])
 
 
+def _next_label_for_class(db: Session, series_id: int, class_id: int) -> str:
+    """Next unique `1000*class_id + instance` label for this series --
+    scanned across every frame of the series, not just the one a new
+    polygon is being created on. Labels double as stable per-object
+    tracking ids across the whole movie (the `1000*class+instance` scheme,
+    matching CellMate's own DIVISION=1000 convention) -- a brand-new object
+    must never reuse an instance number some other object (model- or
+    manually-created, on any frame) already has, or the two become
+    indistinguishable to tracking/quantification."""
+    max_instance = 0
+    for (label,) in db.query(Polygon.label).filter(Polygon.series_id == series_id):
+        try:
+            label_int = int(label)
+        except (TypeError, ValueError):
+            continue
+        c = label_int // 1000
+        if c != class_id:
+            continue
+        max_instance = max(max_instance, label_int - c * 1000)
+    return str(class_id * 1000 + max_instance + 1)
+
+
 @router.get(
     "/{series_id}/frame/{frame_index}/polygons", response_model=list[PolygonOut]
 )
@@ -43,11 +65,13 @@ def create_polygon(
     if not series:
         raise HTTPException(404, "Series not found")
 
+    label = _next_label_for_class(db, series_id, body.class_id) if body.class_id is not None else body.label
+
     polygon = Polygon(
         series_id=series_id,
         frame_index=frame_index,
         points=body.points,
-        label=body.label,
+        label=label,
         source=body.source,
     )
     db.add(polygon)

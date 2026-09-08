@@ -6,6 +6,11 @@ from pydantic import BaseModel, ConfigDict
 class PolygonCreate(BaseModel):
     points: list[list[float]]
     label: str = ""
+    # When set, the backend assigns the label itself -- see
+    # annotations.py's create_polygon -- instead of trusting `label` as
+    # given, so a new object can never collide with an instance number a
+    # concurrent create (or a different frame) already used.
+    class_id: int | None = None
     source: str = "manual"
 
 
