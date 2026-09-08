@@ -23,8 +23,8 @@ import io
 import logging
 
 import numpy as np
+import skimage.io
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from PIL import Image
 from pydantic import BaseModel
 
 from model_handler import (
@@ -72,13 +72,23 @@ def health():
     return {"status": "error", "detail": _load_error}
 
 
-def _to_uint8_rgb(image: Image.Image) -> np.ndarray:
-    if image.mode in ("I;16", "I;16B", "I;16L", "I"):
-        arr = np.array(image).astype(np.float32)
-        lo, hi = float(arr.min()), float(arr.max())
-        arr = (arr - lo) / (hi - lo) * 255 if hi > lo else arr * 0
-        image = Image.fromarray(arr.astype(np.uint8))
-    return np.array(image.convert("RGB"))
+def _to_uint8_rgb(image: np.ndarray) -> np.ndarray:
+    """Global min/max stretch to the full 0-255 range, then replicate to 3
+    channels if the source is single-channel (as microscopy frames from the
+    backend always are). Deliberately just this -- no percentile clipping
+    or other windowing -- so the data reaching the model is the actual
+    frame, not a display-oriented contrast adjustment."""
+    if image.ndim == 3 and image.shape[-1] >= 3:
+        image = image[..., :3]  # drop alpha if present; already has color channels
+    image = image.astype(np.float32)
+    image = image - image.min()
+    max_val = image.max()
+    if max_val > 0:
+        image = image / max_val
+    image = (image * 255).astype(np.uint8)
+    if image.ndim == 2:
+        image = np.stack((image,) * 3, axis=-1)
+    return image
 
 
 @app.post("/predict-frame", response_model=FramePredictResult)
@@ -96,11 +106,11 @@ async def predict_frame(
         raise HTTPException(503, f"Model not loaded: {_load_error}")
 
     try:
-        pil_image = Image.open(io.BytesIO(await image.read()))
+        arr = skimage.io.imread(io.BytesIO(await image.read()))
     except Exception as exc:
         raise HTTPException(400, f"Could not decode image: {exc}") from exc
 
-    rgb = _to_uint8_rgb(pil_image)
+    rgb = _to_uint8_rgb(arr)
     predictions = _model.predict_frame(
         rgb,
         score_threshold=score_threshold,

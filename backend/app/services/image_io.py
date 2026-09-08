@@ -338,7 +338,10 @@ def _contrast_stretch_uint8(
 def render_frame_png(
     arr: np.ndarray, vmin: float | None = None, vmax: float | None = None
 ) -> bytes:
-    """Contrast-stretch an 8/16-bit (or float) array into an 8-bit PNG."""
+    """Contrast-stretch an 8/16-bit (or float) array into an 8-bit PNG --
+    for the browser to *display*, where the 1st/99th percentile auto-
+    contrast in `_contrast_stretch_uint8` is a reasonable default. Model
+    inference wants the raw data instead -- see `raw_frame_tiff_bytes`."""
     if arr.ndim == 3 and arr.shape[2] > 3:
         arr = arr[:, :, 0]  # unsupported multi-channel: show first channel
 
@@ -347,6 +350,19 @@ def render_frame_png(
     image = Image.fromarray(img8)
     buf = io.BytesIO()
     image.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def raw_frame_tiff_bytes(arr: np.ndarray) -> bytes:
+    """The frame as-is, losslessly, at its native dtype (8-bit, 16-bit,
+    whatever) and shape -- no contrast stretch, no clipping, no percentile
+    windowing. For sending to a model service (sam_service/panoptic_service),
+    which does its own min/max normalization on the actual data rather than
+    the percentile-clipped version `render_frame_png` makes for on-screen
+    display -- the two have different jobs and shouldn't share a
+    contrast-altering step."""
+    buf = io.BytesIO()
+    tifffile.imwrite(buf, arr)
     return buf.getvalue()
 
 

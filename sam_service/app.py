@@ -18,8 +18,8 @@ import json
 import logging
 
 import numpy as np
+import skimage.io
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from PIL import Image
 from pydantic import BaseModel
 
 from model_handler import ModelHandler
@@ -46,15 +46,23 @@ def health():
     return {"status": "ok" if _model is not None else "loading"}
 
 
-def _to_uint8_rgb(image: Image.Image) -> np.ndarray:
-    # 16-bit microscopy frames need a min/max stretch before SAM can use
-    # them; 8-bit frames are already displayable as-is.
-    if image.mode in ("I;16", "I;16B", "I;16L", "I"):
-        arr = np.array(image).astype(np.float32)
-        lo, hi = float(arr.min()), float(arr.max())
-        arr = (arr - lo) / (hi - lo) * 255 if hi > lo else arr * 0
-        image = Image.fromarray(arr.astype(np.uint8))
-    return np.array(image.convert("RGB"))
+def _to_uint8_rgb(image: np.ndarray) -> np.ndarray:
+    """Global min/max stretch to the full 0-255 range, then replicate to 3
+    channels if the source is single-channel (as microscopy frames from the
+    backend always are). Deliberately just this -- no percentile clipping
+    or other windowing -- so the data reaching SAM is the actual frame, not
+    a display-oriented contrast adjustment."""
+    if image.ndim == 3 and image.shape[-1] >= 3:
+        image = image[..., :3]  # drop alpha if present; already has color channels
+    image = image.astype(np.float32)
+    image = image - image.min()
+    max_val = image.max()
+    if max_val > 0:
+        image = image / max_val
+    image = (image * 255).astype(np.uint8)
+    if image.ndim == 2:
+        image = np.stack((image,) * 3, axis=-1)
+    return image
 
 
 @app.post("/predict-point", response_model=PredictResult)
@@ -68,7 +76,7 @@ async def predict_point(
         raise HTTPException(503, "Model still loading")
 
     try:
-        pil_image = Image.open(io.BytesIO(await image.read()))
+        arr = skimage.io.imread(io.BytesIO(await image.read()))
     except Exception as exc:
         raise HTTPException(400, f"Could not decode image: {exc}") from exc
 
@@ -78,6 +86,6 @@ async def predict_point(
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(400, f"Invalid points payload: {exc}") from exc
 
-    rgb = _to_uint8_rgb(pil_image)
+    rgb = _to_uint8_rgb(arr)
     polygon = _model.predict_point(rgb, point_list)
     return PredictResult(polygons=[polygon] if polygon is not None else [])

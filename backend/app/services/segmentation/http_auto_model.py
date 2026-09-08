@@ -25,7 +25,10 @@ class HttpAutoSegmentationModel(AutoSegmentationModel):
         area_threshold: int | None = None,
         keep_border: bool = False,
     ) -> list[dict]:
-        png_bytes = image_io.render_frame_png(image)
+        # Raw/lossless -- the model's own preprocessing does the contrast
+        # normalization on the actual data, not a percentile-clipped
+        # display rendering (see raw_frame_tiff_bytes).
+        tiff_bytes = image_io.raw_frame_tiff_bytes(image)
         data = {"keep_border": str(keep_border)}
         if score_threshold is not None:
             data["score_threshold"] = str(score_threshold)
@@ -36,7 +39,7 @@ class HttpAutoSegmentationModel(AutoSegmentationModel):
         try:
             resp = requests.post(
                 f"{self.base_url}/predict-frame",
-                files={"image": ("frame.png", png_bytes, "image/png")},
+                files={"image": ("frame.tiff", tiff_bytes, "image/tiff")},
                 data=data,
                 timeout=self.timeout,
             )
