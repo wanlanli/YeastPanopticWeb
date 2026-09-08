@@ -69,6 +69,9 @@ interface ViewerState {
   /** original filename per frame, for folder/upload series (one file per
    * frame); null for multipage_tiff series or before fetched. */
   frameNames: string[] | null;
+  /** overlay each polygon's stable track id on the canvas -- see
+   * RightPanel's Tracking tab toggle; session-scoped, off by default */
+  showTrackIds: boolean;
   /** user-adjustable auto-segment filtering settings, session-scoped (not
    * reset when switching series/frames) -- see Toolbar's Advanced Settings */
   segmentSettings: SegmentSettings;
@@ -103,6 +106,7 @@ interface ViewerState {
   setRightPanelTab: (tab: RightPanelTab) => void;
   setSeriesTracking: (tracking: SeriesTrackingMap | null) => void;
   setFrameNames: (names: string[] | null) => void;
+  toggleShowTrackIds: () => void;
   setSegmentSettings: (settings: Partial<SegmentSettings>) => void;
 }
 
@@ -129,6 +133,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   rightPanelTab: 'labels',
   seriesTracking: null,
   frameNames: null,
+  showTrackIds: false,
   segmentSettings: DEFAULT_SEGMENT_SETTINGS,
 
   setSeries: (series) =>
@@ -211,6 +216,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   setRightPanelTab: (rightPanelTab) => set({ rightPanelTab }),
   setSeriesTracking: (seriesTracking) => set({ seriesTracking }),
   setFrameNames: (frameNames) => set({ frameNames }),
+  toggleShowTrackIds: () => set((s) => ({ showTrackIds: !s.showTrackIds })),
   setSegmentSettings: (partial) =>
     set((state) => ({ segmentSettings: { ...state.segmentSettings, ...partial } })),
 }));

@@ -1,16 +1,26 @@
 import Konva from 'konva';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Circle, Group, Image as KonvaImage, Layer, Line, Stage } from 'react-konva';
+import { Circle, Group, Image as KonvaImage, Layer, Line, Stage, Text } from 'react-konva';
 import { api } from '../../api/client';
 import { useViewerStore } from '../../store/useViewerStore';
 import { BufferBar } from './BufferBar';
 import { CLASS_IDS, classDisplayName, classFromLabel, colorForClass } from './colorByClass';
 import './ContextMenu.css';
 import { PolygonLayer } from './PolygonLayer';
+import { trackIdFor } from './trackIds';
 import { useDraftActions } from './useDraftActions';
 import { useHtmlImage } from './useHtmlImage';
 import { useUndoRedo } from './useUndoRedo';
 import './ImageCanvas.css';
+
+/** Centroid of a polygon's vertices -- a simple, good-enough anchor point
+ * for the track-id label overlay (doesn't need to be the true geometric
+ * centroid, just land visibly inside typical cell shapes). */
+function polygonCentroid(points: [number, number][]): [number, number] {
+  const n = points.length;
+  const sum = points.reduce(([sx, sy], [x, y]) => [sx + x, sy + y], [0, 0]);
+  return [sum[0] / n, sum[1] / n];
+}
 
 const CLOSE_POLYGON_TOLERANCE_PX = 8; // screen pixels, converted via /scale below
 const AUTOSAVE_INTERVAL_MS = 5 * 60 * 1000;
@@ -43,6 +53,8 @@ export function ImageCanvas() {
   const promptPreview = useViewerStore((s) => s.promptPreview);
   const setPromptPreview = useViewerStore((s) => s.setPromptPreview);
   const clearDrafts = useViewerStore((s) => s.clearDrafts);
+  const showTrackIds = useViewerStore((s) => s.showTrackIds);
+  const seriesTracking = useViewerStore((s) => s.seriesTracking);
   const pushAction = useViewerStore((s) => s.pushAction);
   const markSaved = useViewerStore((s) => s.markSaved);
   const { undo, redo } = useUndoRedo();
@@ -547,6 +559,34 @@ export function ImageCanvas() {
                 }}
               />
             ))}
+
+            {showTrackIds &&
+              polygons.map((poly) => {
+                const trackId = trackIdFor(seriesTracking, frameIndex, poly);
+                if (trackId === undefined) return null;
+                const [cx, cy] = polygonCentroid(poly.points);
+                return (
+                  <Text
+                    key={`track-${poly.id}`}
+                    x={cx}
+                    y={cy}
+                    text={String(trackId)}
+                    fontSize={13 / transform.scale}
+                    fontStyle="bold"
+                    fill="#fff"
+                    stroke="#000"
+                    strokeWidth={0.6 / transform.scale}
+                    fillAfterStrokeEnabled
+                    // no `width` is set, so Konva's `align` prop (which
+                    // aligns within a bounding width) wouldn't do anything --
+                    // center manually instead, approximating text width from
+                    // character count at this font size
+                    offsetX={(String(trackId).length * 3.6) / transform.scale}
+                    offsetY={7 / transform.scale}
+                    listening={false}
+                  />
+                );
+              })}
 
             {draftPoints.length > 0 && (
               <>

@@ -3,6 +3,7 @@ import { api } from '../../api/client';
 import type { PolygonAnnotation } from '../../api/types';
 import { useViewerStore } from '../../store/useViewerStore';
 import { CLASS_IDS, classDisplayName, classFromLabel, colorForClass, textColorForClass } from './colorByClass';
+import { trackIdFor } from './trackIds';
 import './PolygonList.css';
 
 const SOURCE_COLOR: Record<PolygonAnnotation['source'], string> = {
@@ -30,10 +31,6 @@ export function PolygonList() {
   const frameIndex = useViewerStore((s) => s.frameIndex);
   const seriesTracking = useViewerStore((s) => s.seriesTracking);
 
-  const frameTrackIds = seriesTracking?.frame_track_map[String(frameIndex)];
-  function trackIdFor(p: PolygonAnnotation): number | undefined {
-    return frameTrackIds?.[String(Number(p.label))];
-  }
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -156,9 +153,9 @@ export function PolygonList() {
                 {p.label || `#${p.id}`}
               </span>
             )}
-            {trackIdFor(p) !== undefined && (
+            {trackIdFor(seriesTracking, frameIndex, p) !== undefined && (
               <span className="polygon-track-badge" title="Stable track id (from computed tracking)">
-                track {trackIdFor(p)}
+                track {trackIdFor(seriesTracking, frameIndex, p)}
               </span>
             )}
             <button

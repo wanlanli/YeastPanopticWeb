@@ -13,6 +13,8 @@ export function RightPanel() {
   const setRightPanelTab = useViewerStore((s) => s.setRightPanelTab);
   const seriesTracking = useViewerStore((s) => s.seriesTracking);
   const setSeriesTracking = useViewerStore((s) => s.setSeriesTracking);
+  const showTrackIds = useViewerStore((s) => s.showTrackIds);
+  const toggleShowTrackIds = useViewerStore((s) => s.toggleShowTrackIds);
   const [loading, setLoading] = useState(false);
   const [tracking, setTracking] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
@@ -109,6 +111,18 @@ export function RightPanel() {
                   </button>
                   <button onClick={refreshTracking} disabled={loading || tracking}>
                     {loading ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                  <button
+                    className={showTrackIds ? 'active' : ''}
+                    onClick={toggleShowTrackIds}
+                    disabled={!seriesTracking?.dataset_id}
+                    title={
+                      seriesTracking?.dataset_id
+                        ? 'Show/hide each cell\'s track id as a label on the image'
+                        : 'Run Tracking first'
+                    }
+                  >
+                    {showTrackIds ? 'Hide IDs on Image' : 'Show IDs on Image'}
                   </button>
                   <span className="tracking-tab-hint">
                     Same cell keeps the same id across frames. Refine masks, then Run Tracking

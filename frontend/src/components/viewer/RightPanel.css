@@ -96,6 +96,11 @@
   cursor: default;
 }
 
+.tracking-tab-header button.active {
+  background: #3d63dd;
+  border-color: #3d63dd;
+}
+
 .tracking-tab-hint {
   font-size: 11px;
   color: #888;
