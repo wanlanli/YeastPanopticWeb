@@ -5,7 +5,10 @@ from __future__ import annotations
 import numpy as np
 from skimage.measure import approximate_polygon, find_contours
 
-DEFAULT_SIMPLIFY_TOLERANCE = 0.75  # lower tolerance keeps ~2x more points
+DEFAULT_SIMPLIFY_TOLERANCE = 1.4  # lower tolerance keeps more points
+# Matches CVAT's own default polygon-approximation accuracy (cvat-ui's
+# thresholdFromAccuracy(9), MAX_ACCURACY=13 -> ~1.43px) -- see
+# panoptic_service/mask_utils.py for the same change and why.
 MIN_POLYGON_POINTS = 3
 
 

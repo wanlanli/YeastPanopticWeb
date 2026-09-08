@@ -9,7 +9,12 @@ import numpy as np
 from skimage import morphology
 from skimage.measure import approximate_polygon, find_contours, label, regionprops
 
-DEFAULT_SIMPLIFY_TOLERANCE = 0.5  # lower tolerance keeps ~2x more points
+DEFAULT_SIMPLIFY_TOLERANCE = 1.4  # lower tolerance keeps more points
+# Matches CVAT's own default polygon-approximation accuracy (cvat-ui's
+# thresholdFromAccuracy(9), MAX_ACCURACY=13 -> ~1.43px) -- our previous 0.5
+# stayed too close to the raw marching-squares contour, which follows the
+# mask's pixel-level noise and produces a visibly jagged (many near-
+# collinear vertices) outline rather than a clean cell boundary.
 MIN_POLYGON_POINTS = 3
 DEFAULT_HOLE_AREA_THRESHOLD = 1000
 
