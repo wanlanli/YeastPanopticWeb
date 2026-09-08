@@ -37,3 +37,7 @@ sample_data/
 # Reference-only dump of CVAT's serverless model functions (not part of
 # this project's source; kept locally for adapting model integration code)
 serverless/
+
+# Personal eval/demo notebooks for the separate model repos (PytrochDeepyeast
+# etc.) -- not part of this app, hardcode machine-specific paths
+*.ipynb
