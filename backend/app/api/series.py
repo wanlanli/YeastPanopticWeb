@@ -259,6 +259,29 @@ def get_frame_mask(series_id: int, frame_index: int, db: Session = Depends(get_d
     )
 
 
+def _latest_tracking_dataset(db: Session, series_id: int) -> QuantificationDataset | None:
+    return (
+        db.query(QuantificationDataset)
+        .filter(QuantificationDataset.series_id == series_id, QuantificationDataset.kind == "tracking")
+        .order_by(QuantificationDataset.uploaded_at.desc())
+        .first()
+    )
+
+
+def _load_frame_track_map(db: Session, series_id: int) -> tuple[int | None, dict]:
+    """(dataset_id, {str(frame_index): {str(original_label): track_id}}) for
+    the latest computed tracking dataset, or (None, {}) if there isn't one."""
+    dataset = _latest_tracking_dataset(db, series_id)
+    if not dataset:
+        return None, {}
+    try:
+        raw = json.loads(Path(dataset.file_path).read_text())
+    except Exception:
+        return dataset.id, {}
+    frame_track_map = raw.get("frame_track_map", {}) if isinstance(raw, dict) else {}
+    return dataset.id, frame_track_map
+
+
 @router.get("/{series_id}/tracking", response_model=SeriesTrackingMap)
 def get_series_tracking_map(series_id: int, db: Session = Depends(get_db)):
     """The latest computed tracking dataset's frame-by-frame, non-destructive
@@ -269,22 +292,8 @@ def get_series_tracking_map(series_id: int, db: Session = Depends(get_db)):
     if not series:
         raise HTTPException(404, "Series not found")
 
-    dataset = (
-        db.query(QuantificationDataset)
-        .filter(QuantificationDataset.series_id == series_id, QuantificationDataset.kind == "tracking")
-        .order_by(QuantificationDataset.uploaded_at.desc())
-        .first()
-    )
-    if not dataset:
-        return SeriesTrackingMap(dataset_id=None, frame_track_map={})
-
-    try:
-        raw = json.loads(Path(dataset.file_path).read_text())
-    except Exception:
-        return SeriesTrackingMap(dataset_id=dataset.id, frame_track_map={})
-
-    frame_track_map = raw.get("frame_track_map", {}) if isinstance(raw, dict) else {}
-    return SeriesTrackingMap(dataset_id=dataset.id, frame_track_map=frame_track_map)
+    dataset_id, frame_track_map = _load_frame_track_map(db, series_id)
+    return SeriesTrackingMap(dataset_id=dataset_id, frame_track_map=frame_track_map)
 
 
 @router.get("/{series_id}/frame/{frame_index}/measure", response_model=FrameMeasureResult)
@@ -316,27 +325,52 @@ def measure_frame(
 
 
 @router.get("/{series_id}/mask")
-def get_series_mask(series_id: int, db: Session = Depends(get_db)):
+def get_series_mask(series_id: int, tracked: bool = False, db: Session = Depends(get_db)):
     """Mask export for the whole series, matching the input's own layout:
     a folder/upload of separate frame files exports one mask file per frame
     (zipped together), while a single multipage-tiff stack exports one mask
     stack -- so the output can drop back in next to the source the same way
-    it came out."""
+    it came out.
+
+    `tracked=true` burns each object's stable CellMate track id into the
+    mask instead of its own per-frame label, so the same physical cell has
+    the same pixel value across every frame of the exported stack -- the
+    per-frame label (1000*class+instance) only guarantees uniqueness within
+    a series, not "same cell = same id" across frames; that's what tracking
+    (see the Viewer's Tracking tab) adds. Requires tracking to already be
+    computed for this series."""
     series = db.get(ImageSeries, series_id)
     if not series:
         raise HTTPException(404, "Series not found")
 
+    frame_track_map: dict = {}
+    if tracked:
+        _dataset_id, frame_track_map = _load_frame_track_map(db, series_id)
+        if not frame_track_map:
+            raise HTTPException(
+                400, "No tracking computed for this series yet -- run Tracking in the Viewer first."
+            )
+
     frames = []
     for frame_index in range(series.frame_count):
         polygons = _frame_polygons(db, series_id, frame_index)
+        if tracked:
+            frame_map = frame_track_map.get(str(frame_index), {})
+            polygons = [
+                (str(frame_map[label]) if label in frame_map else label, points) for label, points in polygons
+            ]
         frames.append(mask_io.rasterize_polygons(polygons, series.height, series.width))
+
+    suffix = "_tracked" if tracked else ""
 
     if series.source_type in ("folder", "upload"):
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for frame_index, mask in enumerate(frames):
-                zf.writestr(f"{_source_stem(series, frame_index)}_mask.tif", mask_io.mask_to_tiff_bytes(mask))
-        filename = f"{_source_stem(series)}_masks.zip"
+                zf.writestr(
+                    f"{_source_stem(series, frame_index)}_mask{suffix}.tif", mask_io.mask_to_tiff_bytes(mask)
+                )
+        filename = f"{_source_stem(series)}_masks{suffix}.zip"
         return Response(
             content=buf.getvalue(),
             media_type="application/zip",
@@ -344,7 +378,7 @@ def get_series_mask(series_id: int, db: Session = Depends(get_db)):
         )
 
     tiff_bytes = mask_io.mask_stack_to_tiff_bytes(frames)
-    filename = f"{_source_stem(series)}_mask.tif"
+    filename = f"{_source_stem(series)}_mask{suffix}.tif"
     return Response(
         content=tiff_bytes,
         media_type="image/tiff",

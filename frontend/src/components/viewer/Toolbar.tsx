@@ -2,10 +2,13 @@ import {
   Crosshair,
   Download,
   Eraser,
+  Eye,
+  EyeOff,
   FileArchive,
   MousePointer2,
   PenTool,
   Redo2,
+  Route,
   Save,
   Settings2,
   Sparkles,
@@ -107,6 +110,9 @@ export function Toolbar() {
   const setPromptClassId = useViewerStore((s) => s.setPromptClassId);
   const segmentSettings = useViewerStore((s) => s.segmentSettings);
   const setSegmentSettings = useViewerStore((s) => s.setSegmentSettings);
+  const showMasks = useViewerStore((s) => s.showMasks);
+  const toggleShowMasks = useViewerStore((s) => s.toggleShowMasks);
+  const seriesTracking = useViewerStore((s) => s.seriesTracking);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const lastSavedAt = useViewerStore((s) => s.lastSavedAt);
   const markSaved = useViewerStore((s) => s.markSaved);
@@ -411,6 +417,17 @@ export function Toolbar() {
           if (existing) pushAction({ type: 'delete', polygon: existing });
         }}
       />
+      <IconButton
+        icon={showMasks ? Eye : EyeOff}
+        label={showMasks ? 'Hide Masks' : 'Show Masks'}
+        title={
+          showMasks
+            ? 'Hide Masks — hide all polygons/masks on the canvas to see the raw image underneath'
+            : 'Show Masks — show polygons/masks on the canvas again'
+        }
+        className={showMasks ? '' : 'active'}
+        onClick={toggleShowMasks}
+      />
       {series && (
         <>
           <IconButton
@@ -444,6 +461,24 @@ export function Toolbar() {
           >
             <FileArchive size={16} strokeWidth={2} />
           </a>
+          {series.frame_count > 1 &&
+            (seriesTracking?.dataset_id ? (
+              <a
+                className="toolbar-link-btn toolbar-icon-btn"
+                href={api.seriesMaskUrl(series.id, true)}
+                title="Export Mask Stack (Tracked) — same as Export Mask Stack, but each object's stable track id is burned in instead of its per-frame label, so the same cell has the same pixel value across every frame"
+                aria-label="Export Mask Stack (Tracked)"
+              >
+                <Route size={16} strokeWidth={2} />
+              </a>
+            ) : (
+              <IconButton
+                icon={Route}
+                label="Export Mask Stack (Tracked)"
+                title="Export Mask Stack (Tracked) — run Tracking first (Tracking tab, right panel)"
+                disabled
+              />
+            ))}
         </>
       )}
       </div>

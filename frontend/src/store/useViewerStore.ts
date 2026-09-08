@@ -72,6 +72,10 @@ interface ViewerState {
   /** overlay each polygon's stable track id on the canvas -- see
    * RightPanel's Tracking tab toggle; session-scoped, off by default */
   showTrackIds: boolean;
+  /** render saved polygons/masks on the canvas at all -- lets you glance at
+   * the raw image underneath without deleting anything; session-scoped, on
+   * by default */
+  showMasks: boolean;
   /** user-adjustable auto-segment filtering settings, session-scoped (not
    * reset when switching series/frames) -- see Toolbar's Advanced Settings */
   segmentSettings: SegmentSettings;
@@ -107,6 +111,7 @@ interface ViewerState {
   setSeriesTracking: (tracking: SeriesTrackingMap | null) => void;
   setFrameNames: (names: string[] | null) => void;
   toggleShowTrackIds: () => void;
+  toggleShowMasks: () => void;
   setSegmentSettings: (settings: Partial<SegmentSettings>) => void;
 }
 
@@ -134,6 +139,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   seriesTracking: null,
   frameNames: null,
   showTrackIds: false,
+  showMasks: true,
   segmentSettings: DEFAULT_SEGMENT_SETTINGS,
 
   setSeries: (series) =>
@@ -217,6 +223,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   setSeriesTracking: (seriesTracking) => set({ seriesTracking }),
   setFrameNames: (frameNames) => set({ frameNames }),
   toggleShowTrackIds: () => set((s) => ({ showTrackIds: !s.showTrackIds })),
+  toggleShowMasks: () => set((s) => ({ showMasks: !s.showMasks })),
   setSegmentSettings: (partial) =>
     set((state) => ({ segmentSettings: { ...state.segmentSettings, ...partial } })),
 }));

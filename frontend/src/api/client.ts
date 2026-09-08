@@ -75,7 +75,8 @@ export const api = {
     ),
   frameMaskUrl: (seriesId: number, frameIndex: number) =>
     `/api/series/${seriesId}/frame/${frameIndex}/mask`,
-  seriesMaskUrl: (seriesId: number) => `/api/series/${seriesId}/mask`,
+  seriesMaskUrl: (seriesId: number, tracked = false) =>
+    `/api/series/${seriesId}/mask${tracked ? '?tracked=true' : ''}`,
 
   // Annotations
   listPolygons: (seriesId: number, frameIndex: number) =>

@@ -54,6 +54,7 @@ export function ImageCanvas() {
   const setPromptPreview = useViewerStore((s) => s.setPromptPreview);
   const clearDrafts = useViewerStore((s) => s.clearDrafts);
   const showTrackIds = useViewerStore((s) => s.showTrackIds);
+  const showMasks = useViewerStore((s) => s.showMasks);
   const seriesTracking = useViewerStore((s) => s.seriesTracking);
   const pushAction = useViewerStore((s) => s.pushAction);
   const markSaved = useViewerStore((s) => s.markSaved);
@@ -539,26 +540,27 @@ export function ImageCanvas() {
           >
             {image && <KonvaImage image={image} width={series.width} height={series.height} />}
 
-            {polygons.map((poly) => (
-              <PolygonLayer
-                key={poly.id}
-                polygon={poly}
-                isSelected={selectedPolygonId === poly.id}
-                scale={transform.scale}
-                interactive={tool === 'select'}
-                reshaping={selectedPolygonId === poly.id && reshapeAnchor !== null}
-                hoverSelectEnabled={tool === 'select' && reshapeAnchor === null && !reshapeCandidates}
-                onSelect={() => tool === 'select' && setSelectedPolygonId(poly.id)}
-                onChangePoints={(pts) => localChange(poly.id, pts)}
-                onCommitPoints={(pts) => commitPolygon(poly.id, pts)}
-                onVertexClick={handleVertexClick}
-                onReshapeClick={addReshapePoint}
-                onRequestTypeMenu={(polygonId, x, y) => {
-                  setSelectedPolygonId(polygonId);
-                  setTypeMenu({ polygonId, x, y });
-                }}
-              />
-            ))}
+            {showMasks &&
+              polygons.map((poly) => (
+                <PolygonLayer
+                  key={poly.id}
+                  polygon={poly}
+                  isSelected={selectedPolygonId === poly.id}
+                  scale={transform.scale}
+                  interactive={tool === 'select'}
+                  reshaping={selectedPolygonId === poly.id && reshapeAnchor !== null}
+                  hoverSelectEnabled={tool === 'select' && reshapeAnchor === null && !reshapeCandidates}
+                  onSelect={() => tool === 'select' && setSelectedPolygonId(poly.id)}
+                  onChangePoints={(pts) => localChange(poly.id, pts)}
+                  onCommitPoints={(pts) => commitPolygon(poly.id, pts)}
+                  onVertexClick={handleVertexClick}
+                  onReshapeClick={addReshapePoint}
+                  onRequestTypeMenu={(polygonId, x, y) => {
+                    setSelectedPolygonId(polygonId);
+                    setTypeMenu({ polygonId, x, y });
+                  }}
+                />
+              ))}
 
             {showTrackIds &&
               polygons.map((poly) => {
