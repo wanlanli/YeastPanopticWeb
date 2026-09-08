@@ -153,7 +153,9 @@ machine has an NVIDIA GPU + driver, it's used automatically
 available"?** That's the `python3-venv` system package missing, which
 normally needs `apt install` (root) to fix. If conda is already on this
 machine (`which conda`), set `PYTHON_ENV_MANAGER=conda` in `.env` and
-create conda envs instead of venvs -- see the comment at the top of
+create conda envs instead of venvs -- either run `./scripts/setup_conda_envs.sh`
+(creates and installs into all three envs in one go, safe to re-run if it
+fails partway through) or do it by hand -- see the comment at the top of
 `scripts/run_all.sh` for the exact commands (naming convention:
 `yeastpanoptic-backend`, `yeastpanoptic-sam_service`,
 `yeastpanoptic-panoptic_service`). No conda either? `python3 -m venv
