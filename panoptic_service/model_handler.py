@@ -162,7 +162,7 @@ class ModelHandler:
         for pred_mask, score, instance_score, panoptic_label in zip(
             pred_masks, scores, instance_scores, panoptic_labels
         ):
-            if score < score_threshold or instance_score < instance_threshold:
+            if score <= score_threshold or instance_score <= instance_threshold:
                 continue
             if not keep_border and (
                 pred_mask[0, :].any() or pred_mask[-1, :].any() or pred_mask[:, 0].any() or pred_mask[:, -1].any()

@@ -10,8 +10,6 @@ YEAST_CATEGORIES = [
     {"id": 5, "name": "lysis"},
     {"id": 6, "name": "spore"},
     {"id": 7, "name": "unknown"},
-    {"id": 8, "name": "unknown"},
-    {"id": 9, "name": "unknown"},
 ]
 
 
