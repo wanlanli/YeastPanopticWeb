@@ -81,6 +81,14 @@
   width: 56px;
 }
 
+.quant-measure-checkbox input[type='checkbox'] {
+  background: none;
+  border: none;
+  padding: 0;
+  width: auto;
+  cursor: pointer;
+}
+
 .quant-geometry-picker-wrap {
   position: relative;
 }

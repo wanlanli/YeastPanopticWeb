@@ -34,6 +34,9 @@ export function Quantification() {
   const [region, setRegion] = useState<MeasurementRegion>('cytoplasm');
   const [geometryFeatures, setGeometryFeatures] = useState<string[]>([]);
   const [showGeometryPicker, setShowGeometryPicker] = useState(false);
+  const [track, setTrack] = useState(false);
+  const [align, setAlign] = useState(true);
+  const [radius, setRadius] = useState(0);
   const [resolution, setResolution] = useState(1);
   const [measuring, setMeasuring] = useState(false);
   const [measureError, setMeasureError] = useState<string | null>(null);
@@ -101,7 +104,11 @@ export function Quantification() {
     setMeasuring(true);
     setMeasureError(null);
     try {
-      const [created] = await api.measureRegionIntensity(seriesId, channelIndex, region, geometryFeatures, resolution);
+      const [created] = await api.measureRegionIntensity(seriesId, channelIndex, region, geometryFeatures, resolution, {
+        track,
+        align,
+        radius,
+      });
       await refreshDatasets();
       if (created) setFeatureId(created.id);
     } catch (e) {
@@ -186,6 +193,48 @@ export function Quantification() {
               </select>
             </label>
             <RegionDemo region={region} />
+            <label
+              className="quant-measure-field quant-measure-checkbox"
+              title="Link 'cell' across frames via CellMate's tracker instead of treating each frame's instance as unrelated"
+            >
+              <input
+                type="checkbox"
+                checked={track}
+                onChange={(e) => setTrack(e.target.checked)}
+                disabled={measuring}
+              />
+              Track cells across frames
+            </label>
+            {track && region !== 'cytoplasm' && (
+              <label
+                className="quant-measure-field quant-measure-checkbox"
+                title="Reorient/resample each frame's points so point_index N is the same physical location on the cell across time"
+              >
+                <input
+                  type="checkbox"
+                  checked={align}
+                  onChange={(e) => setAlign(e.target.checked)}
+                  disabled={measuring}
+                />
+                Align points across time
+              </label>
+            )}
+            {region !== 'cytoplasm' && (
+              <label
+                className="quant-measure-field"
+                title="Read each sampled point as the mean over a disk instead of the single nearest pixel -- a steadier signal. Same physical unit as Resolution (e.g. um), not pixels -- converted internally, so the ROI size stays the same regardless of resolution. 0 keeps the single-pixel read."
+              >
+                Sample radius (same unit as Resolution)
+                <input
+                  type="number"
+                  step="any"
+                  min={0}
+                  value={radius}
+                  onChange={(e) => setRadius(Number(e.target.value))}
+                  disabled={measuring}
+                />
+              </label>
+            )}
             <div className="quant-geometry-picker-wrap">
               <button
                 type="button"

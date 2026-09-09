@@ -23,6 +23,24 @@ class RegionIntensityRequest(BaseModel):
     # quantification_compute.SELECTABLE_GEOMETRY_FEATURES) -- none by
     # default, geometry isn't mixed in unless asked for
     geometry_features: list[str] = []
+    # membrane/skeleton only: read each sampled point as the mean over a
+    # disk instead of the single nearest pixel -- 0 (the default) keeps the
+    # single-pixel read. A physical distance, same unit as pixel_size (e.g.
+    # um), not a pixel count -- converted internally so the actual ROI size
+    # stays the same regardless of a series' resolution
+    radius: float = 0
+    # link "cell" across frames via CellMate's tracker + CellNetwork instead
+    # of using each frame's own instance number -- off by default, matching
+    # this endpoint's original untracked behavior
+    track: bool = False
+    # membrane/skeleton only, and only when track=True: reorient/resample
+    # each frame's points so point_index N is the same physical location on
+    # the cell across time (see CellNetwork.aligned_coords_overtime /
+    # aligned_skeleton_overtime); ignored otherwise
+    align: bool = True
+    iou_threshold: float = 0.25
+    max_miss: int = 5
+    neighbor_threshold: float = 50
 
 
 class QuantificationDatasetOut(BaseModel):

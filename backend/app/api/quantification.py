@@ -144,13 +144,14 @@ def compute_quantification(
 def measure(body: RegionIntensityRequest, db: Session = Depends(get_db)):
     """The main quantification table for one series: one fluorescent
     channel's intensity over a specific sub-region of each cell -- whole
-    area (one row per cell) or outline/centerline (one row per SAMPLED
-    POINT along it, an intensity profile rather than a single average --
-    see compute_region_intensity), for every cell on every frame, with an
-    explicit opt-in selection of geometry columns to merge on. No tracking
-    -- each row is one frame's own instance of a cell, not linked across
-    frames (see /compute for that). Registered as a downloadable/viewable
-    "features" dataset."""
+    area, or outline/centerline as one column per sampled point along it (an
+    intensity profile on one row rather than a single average -- see
+    compute_series_measurements) -- for every cell on every frame, with an
+    explicit opt-in selection of geometry columns to merge on. By default
+    each row is one frame's own instance of a cell, not linked across
+    frames; set track=True to link "cell" across frames via CellMate's
+    tracker + CellNetwork instead (see compute_series_measurements).
+    Registered as a downloadable/viewable "features" dataset."""
     series = db.get(ImageSeries, body.series_id)
     if not series:
         raise HTTPException(404, "Series not found")
@@ -181,6 +182,12 @@ def measure(body: RegionIntensityRequest, db: Session = Depends(get_db)):
             pixel_size=body.pixel_size,
             sampling_interval=body.sampling_interval,
             geometry_features=body.geometry_features,
+            radius=body.radius,
+            track=body.track,
+            align=body.align,
+            iou_threshold=body.iou_threshold,
+            max_miss=body.max_miss,
+            neighbor_threshold=body.neighbor_threshold,
         )
     except RuntimeError as exc:
         raise HTTPException(400, str(exc)) from exc

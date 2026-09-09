@@ -188,15 +188,24 @@ export const api = {
     }),
   /** One channel's intensity over the selected sub-region of every cell on
    * every frame -- whole area (one row per cell) or outline/centerline (one
-   * row per sampled point, an intensity profile) -- plus an opt-in
-   * selection of geometry columns merged on. No tracking, each row is one
-   * frame's own instance of a cell. */
+   * row per cell PER FRAME, one column per sampled point -- an intensity
+   * profile) -- plus an opt-in selection of geometry columns merged on. By
+   * default each row is one frame's own instance of a cell; pass
+   * `track: true` to link "cell" across frames instead (via CellMate's
+   * tracker + CellNetwork), with `align` (membrane/skeleton only)
+   * controlling whether each frame's points are reoriented/resampled so
+   * point N is the same physical location on the cell across time, and
+   * `radius` (membrane/skeleton only) controlling whether each point is
+   * read as the single nearest pixel (0, default) or the mean over a disk
+   * (a steadier signal) -- a physical distance in the same unit as
+   * `pixelSize`, not pixels, converted internally. */
   measureRegionIntensity: (
     seriesId: number,
     channelIndex: number,
     region: MeasurementRegion,
     geometryFeatures: string[] = [],
     pixelSize = 1,
+    options: { track?: boolean; align?: boolean; radius?: number } = {},
   ) =>
     request<QuantificationDataset[]>('/api/quantification/measure', {
       method: 'POST',
@@ -206,6 +215,9 @@ export const api = {
         region,
         geometry_features: geometryFeatures,
         pixel_size: pixelSize,
+        track: options.track ?? false,
+        align: options.align ?? true,
+        radius: options.radius ?? 0,
       }),
     }),
 };
