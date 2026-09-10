@@ -36,7 +36,7 @@ def seed_sample_project() -> None:
             logger.exception("Could not probe sample data at %s; skipping seed", sample_dir)
             return
 
-        project = Project(name=SAMPLE_PROJECT_NAME)
+        project = Project(name=SAMPLE_PROJECT_NAME, is_sample=True)
         db.add(project)
         db.flush()
 

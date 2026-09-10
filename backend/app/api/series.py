@@ -1,6 +1,5 @@
 import io
 import json
-import shutil
 import uuid
 import zipfile
 from pathlib import Path
@@ -10,15 +9,19 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user, get_visitor_session
 from app.config import SUPPORTED_IMAGE_EXTENSIONS, UPLOAD_DIR
 from app.db import get_db
 from app.models.polygon import Polygon
 from app.models.quantification import QuantificationDataset
 from app.models.series import ImageSeries
+from app.models.session import VisitorSession
+from app.models.user import User
 from app.schemas.quantification import FrameMeasureResult, SeriesTrackingMap
 from app.schemas.series import SeriesChannelUpdate, SeriesOut, SeriesRegisterPath
-from app.services import image_io, mask_io
+from app.services import access, image_io, mask_io
 from app.services import quantification_compute
+from app.services.series_delete import delete_series_cascade
 
 router = APIRouter(prefix="/api/series", tags=["series"])
 
@@ -37,7 +40,13 @@ def _series_fields_from_meta(meta: image_io.SeriesMetadata) -> dict:
 
 
 @router.get("", response_model=list[SeriesOut])
-def list_series(project_id: int, db: Session = Depends(get_db)):
+def list_series(
+    project_id: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    access.require_project(db, project_id, user, visitor_session)
     return (
         db.query(ImageSeries)
         .filter(ImageSeries.project_id == project_id)
@@ -47,43 +56,35 @@ def list_series(project_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{series_id}", response_model=SeriesOut)
-def get_series(series_id: int, db: Session = Depends(get_db)):
-    series = db.get(ImageSeries, series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
-    return series
+def get_series(
+    series_id: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    return access.require_series(db, series_id, user, visitor_session)
 
 
 @router.delete("/{series_id}")
-def delete_series(series_id: int, db: Session = Depends(get_db)):
-    series = db.get(ImageSeries, series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
-
-    datasets = (
-        db.query(QuantificationDataset).filter(QuantificationDataset.series_id == series_id).all()
-    )
-    for dataset in datasets:
-        Path(dataset.file_path).unlink(missing_ok=True)
-        db.delete(dataset)
-
-    # Only ever remove files we manage ourselves (this series' own upload
-    # directory). register-path can point at ANY existing folder on disk
-    # (e.g. sample_data) -- deleting the series must never touch that.
-    try:
-        upload_root = UPLOAD_DIR.resolve()
-        relative = Path(series.path).resolve().relative_to(upload_root)
-        shutil.rmtree(upload_root / relative.parts[0], ignore_errors=True)
-    except (OSError, ValueError):
-        pass  # not one of our managed uploads (or already gone) -- leave it
-
-    db.delete(series)  # cascades to polygons (see relationship on the model)
-    db.commit()
+def delete_series(
+    series_id: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    series = access.require_series(db, series_id, user, visitor_session)
+    delete_series_cascade(db, series)
     return {"ok": True}
 
 
 @router.post("/register-path", response_model=SeriesOut)
-def register_path(body: SeriesRegisterPath, db: Session = Depends(get_db)):
+def register_path(
+    body: SeriesRegisterPath,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    access.require_project(db, body.project_id, user, visitor_session)
     p = Path(body.path)
     if not p.exists():
         raise HTTPException(400, f"Path does not exist: {body.path}")
@@ -120,8 +121,11 @@ async def upload_series(
     project_id: int = Form(...),
     name: str = Form(...),
     files: list[UploadFile] = File(...),
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
     db: Session = Depends(get_db),
 ):
+    access.require_project(db, project_id, user, visitor_session)
     if not files:
         raise HTTPException(400, "No files uploaded")
 
@@ -167,10 +171,14 @@ async def upload_series(
 
 
 @router.patch("/{series_id}/channel", response_model=SeriesOut)
-def set_series_channel(series_id: int, body: SeriesChannelUpdate, db: Session = Depends(get_db)):
-    series = db.get(ImageSeries, series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
+def set_series_channel(
+    series_id: int,
+    body: SeriesChannelUpdate,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    series = access.require_series(db, series_id, user, visitor_session)
     if body.dic_channel_index < 0 or body.dic_channel_index >= series.channel_count:
         raise HTTPException(400, f"dic_channel_index out of range [0, {series.channel_count})")
     series.dic_channel_index = body.dic_channel_index
@@ -180,13 +188,16 @@ def set_series_channel(series_id: int, body: SeriesChannelUpdate, db: Session = 
 
 
 @router.get("/{series_id}/frame-names")
-def get_frame_names(series_id: int, db: Session = Depends(get_db)):
+def get_frame_names(
+    series_id: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
     """The original filename for each frame, for series registered from a
     folder/upload of separate image files (one file = one frame). None for
     multipage_tiff series, which have no such per-frame file identity."""
-    series = db.get(ImageSeries, series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
+    series = access.require_series(db, series_id, user, visitor_session)
     if series.source_type not in ("folder", "upload"):
         return {"names": None}
     files = image_io.sorted_frame_files(Path(series.path))
@@ -200,11 +211,11 @@ def get_frame(
     vmin: float | None = None,
     vmax: float | None = None,
     channel: int | None = None,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
     db: Session = Depends(get_db),
 ):
-    series = db.get(ImageSeries, series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
+    series = access.require_series(db, series_id, user, visitor_session)
     channel_index = channel if channel is not None else (series.dic_channel_index or 0)
     try:
         arr = image_io.read_frame(series.source_type, series.path, frame_index, channel_index)
@@ -241,10 +252,14 @@ def _source_stem(series: ImageSeries, frame_index: int | None = None) -> str:
 
 
 @router.get("/{series_id}/frame/{frame_index}/mask")
-def get_frame_mask(series_id: int, frame_index: int, db: Session = Depends(get_db)):
-    series = db.get(ImageSeries, series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
+def get_frame_mask(
+    series_id: int,
+    frame_index: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    series = access.require_series(db, series_id, user, visitor_session)
     if frame_index < 0 or frame_index >= series.frame_count:
         raise HTTPException(404, f"frame_index {frame_index} out of range")
 
@@ -283,14 +298,17 @@ def _load_frame_track_map(db: Session, series_id: int) -> tuple[int | None, dict
 
 
 @router.get("/{series_id}/tracking", response_model=SeriesTrackingMap)
-def get_series_tracking_map(series_id: int, db: Session = Depends(get_db)):
+def get_series_tracking_map(
+    series_id: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
     """The latest computed tracking dataset's frame-by-frame, non-destructive
     label -> track-id map for this series (see quantification_compute) --
     lets the Viewer show "same cell, same id" across frames without touching
     the stored polygon labels. Empty if tracking hasn't been computed yet."""
-    series = db.get(ImageSeries, series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
+    access.require_series(db, series_id, user, visitor_session)
 
     dataset_id, frame_track_map = _load_frame_track_map(db, series_id)
     return SeriesTrackingMap(dataset_id=dataset_id, frame_track_map=frame_track_map)
@@ -298,7 +316,12 @@ def get_series_tracking_map(series_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{series_id}/frame/{frame_index}/measure", response_model=FrameMeasureResult)
 def measure_frame(
-    series_id: int, frame_index: int, pixel_size: float = 1.0, db: Session = Depends(get_db)
+    series_id: int,
+    frame_index: int,
+    pixel_size: float = 1.0,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
 ):
     """Lightweight, on-demand per-object geometry (area, skeleton lengths,
     ...) for this frame's currently saved polygons -- no intensity, no
@@ -308,9 +331,7 @@ def measure_frame(
     `pixel_size` ("resolution" in the UI) is the physical size of one pixel
     (e.g. um/px); area/length columns come back already scaled by it --
     leave at 1.0 for raw pixels."""
-    series = db.get(ImageSeries, series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
+    series = access.require_series(db, series_id, user, visitor_session)
     if frame_index < 0 or frame_index >= series.frame_count:
         raise HTTPException(404, f"frame_index {frame_index} out of range")
 
@@ -325,7 +346,13 @@ def measure_frame(
 
 
 @router.get("/{series_id}/mask")
-def get_series_mask(series_id: int, tracked: bool = False, db: Session = Depends(get_db)):
+def get_series_mask(
+    series_id: int,
+    tracked: bool = False,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
     """Mask export for the whole series, matching the input's own layout:
     a folder/upload of separate frame files exports one mask file per frame
     (zipped together), while a single multipage-tiff stack exports one mask
@@ -339,9 +366,7 @@ def get_series_mask(series_id: int, tracked: bool = False, db: Session = Depends
     a series, not "same cell = same id" across frames; that's what tracking
     (see the Viewer's Tracking tab) adds. Requires tracking to already be
     computed for this series."""
-    series = db.get(ImageSeries, series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
+    series = access.require_series(db, series_id, user, visitor_session)
 
     frame_track_map: dict = {}
     if tracked:

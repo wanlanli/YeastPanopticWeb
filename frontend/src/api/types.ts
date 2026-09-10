@@ -2,6 +2,16 @@ export interface Project {
   id: number;
   name: string;
   created_at: string;
+  /** the permanent, world-readable demo project -- not owned by anyone */
+  is_sample: boolean;
+  /** an anonymous visitor's ephemeral project, deleted after a few hours */
+  is_sandbox: boolean;
+}
+
+export interface User {
+  id: number;
+  email: string;
+  created_at: string;
 }
 
 /** Auto-segment (panoptic model) filtering knobs -- see the "Advanced

@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user, get_visitor_session
 from app.db import get_db
 from app.models.polygon import Polygon
-from app.models.series import ImageSeries
+from app.models.session import VisitorSession
+from app.models.user import User
 from app.schemas.polygon import (
     FramePredictResult,
     PointPrompt,
@@ -12,7 +14,7 @@ from app.schemas.polygon import (
     PolygonUpdate,
     PredictResult,
 )
-from app.services import image_io
+from app.services import access, image_io
 from app.services.segmentation import get_auto_model, get_model
 from app.services.segmentation.http_model import SegmentationServiceError
 
@@ -44,7 +46,14 @@ def _next_label_for_class(db: Session, series_id: int, class_id: int) -> str:
 @router.get(
     "/{series_id}/frame/{frame_index}/polygons", response_model=list[PolygonOut]
 )
-def list_polygons(series_id: int, frame_index: int, db: Session = Depends(get_db)):
+def list_polygons(
+    series_id: int,
+    frame_index: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    access.require_series(db, series_id, user, visitor_session)
     return (
         db.query(Polygon)
         .filter(Polygon.series_id == series_id, Polygon.frame_index == frame_index)
@@ -59,11 +68,11 @@ def create_polygon(
     series_id: int,
     frame_index: int,
     body: PolygonCreate,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
     db: Session = Depends(get_db),
 ):
-    series = db.get(ImageSeries, series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
+    access.require_series(db, series_id, user, visitor_session)
 
     label = _next_label_for_class(db, series_id, body.class_id) if body.class_id is not None else body.label
 
@@ -81,7 +90,14 @@ def create_polygon(
 
 
 @router.delete("/{series_id}/frame/{frame_index}/polygons")
-def delete_frame_polygons(series_id: int, frame_index: int, db: Session = Depends(get_db)):
+def delete_frame_polygons(
+    series_id: int,
+    frame_index: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    access.require_series(db, series_id, user, visitor_session)
     deleted = (
         db.query(Polygon)
         .filter(Polygon.series_id == series_id, Polygon.frame_index == frame_index)
@@ -92,7 +108,13 @@ def delete_frame_polygons(series_id: int, frame_index: int, db: Session = Depend
 
 
 @router.delete("/{series_id}/polygons")
-def delete_series_polygons(series_id: int, db: Session = Depends(get_db)):
+def delete_series_polygons(
+    series_id: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    access.require_series(db, series_id, user, visitor_session)
     deleted = db.query(Polygon).filter(Polygon.series_id == series_id).delete()
     db.commit()
     return {"deleted": deleted}
@@ -100,11 +122,13 @@ def delete_series_polygons(series_id: int, db: Session = Depends(get_db)):
 
 @router.put("/polygons/{polygon_id}", response_model=PolygonOut)
 def update_polygon(
-    polygon_id: int, body: PolygonUpdate, db: Session = Depends(get_db)
+    polygon_id: int,
+    body: PolygonUpdate,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
 ):
-    polygon = db.get(Polygon, polygon_id)
-    if not polygon:
-        raise HTTPException(404, "Polygon not found")
+    polygon = access.require_polygon(db, polygon_id, user, visitor_session)
     if body.points is not None:
         polygon.points = body.points
     if body.label is not None:
@@ -115,10 +139,13 @@ def update_polygon(
 
 
 @router.delete("/polygons/{polygon_id}")
-def delete_polygon(polygon_id: int, db: Session = Depends(get_db)):
-    polygon = db.get(Polygon, polygon_id)
-    if not polygon:
-        raise HTTPException(404, "Polygon not found")
+def delete_polygon(
+    polygon_id: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    polygon = access.require_polygon(db, polygon_id, user, visitor_session)
     db.delete(polygon)
     db.commit()
     return {"ok": True}
@@ -131,11 +158,11 @@ def predict_point(
     series_id: int,
     frame_index: int,
     body: PointPrompt,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
     db: Session = Depends(get_db),
 ):
-    series = db.get(ImageSeries, series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
+    series = access.require_series(db, series_id, user, visitor_session)
     try:
         arr = image_io.read_frame(
             series.source_type, series.path, frame_index, series.dic_channel_index or 0
@@ -162,15 +189,15 @@ def predict_frame(
     instance_threshold: float | None = None,
     area_threshold: int | None = None,
     keep_border: bool = False,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
     db: Session = Depends(get_db),
 ):
     """score_threshold/instance_threshold/area_threshold/keep_border are
     user-adjustable filtering knobs (see the app's Advanced Settings panel
     next to Auto-Segment Frame); omitted ones fall back to the model's own
     defaults."""
-    series = db.get(ImageSeries, series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
+    series = access.require_series(db, series_id, user, visitor_session)
     try:
         arr = image_io.read_frame(
             series.source_type, series.path, frame_index, series.dic_channel_index or 0

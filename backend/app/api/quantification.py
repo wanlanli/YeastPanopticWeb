@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user, get_visitor_session
 from app.config import QUANT_DIR
 from app.db import get_db
 from app.models.quantification import QuantificationDataset
-from app.models.series import ImageSeries
+from app.models.session import VisitorSession
+from app.models.user import User
 from app.schemas.quantification import (
     ComputeQuantificationRequest,
     FeatureTablePage,
@@ -18,6 +20,7 @@ from app.schemas.quantification import (
     TrackingTree,
     TsneResult,
 )
+from app.services import access
 from app.services import quantification as quant_service
 from app.services import quantification_compute
 
@@ -28,7 +31,13 @@ ALLOWED_KINDS = {"features", "tracking"}
 
 
 @router.get("", response_model=list[QuantificationDatasetOut])
-def list_datasets(project_id: int, db: Session = Depends(get_db)):
+def list_datasets(
+    project_id: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    access.require_project(db, project_id, user, visitor_session)
     return (
         db.query(QuantificationDataset)
         .filter(QuantificationDataset.project_id == project_id)
@@ -44,8 +53,11 @@ async def upload_dataset(
     kind: str = Form(...),
     series_id: int | None = Form(None),
     file: UploadFile = File(...),
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
     db: Session = Depends(get_db),
 ):
+    access.require_project(db, project_id, user, visitor_session)
     if kind not in ALLOWED_KINDS:
         raise HTTPException(400, f"kind must be one of {ALLOWED_KINDS}")
     suffix = Path(file.filename or "").suffix.lower()
@@ -73,16 +85,17 @@ async def upload_dataset(
 
 @router.post("/compute", response_model=list[QuantificationDatasetOut])
 def compute_quantification(
-    body: ComputeQuantificationRequest, db: Session = Depends(get_db)
+    body: ComputeQuantificationRequest,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
 ):
     """Compute geometry, per-channel intensity, and (for movies) cross-frame
     tracking from a series' saved polygons, and register the results as
     quantification datasets -- the same kind a user could otherwise upload
     by hand, so they show up in the feature table / t-SNE / tracking views
     immediately."""
-    series = db.get(ImageSeries, body.series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
+    series = access.require_series(db, body.series_id, user, visitor_session)
 
     try:
         result = quantification_compute.compute_series_quantification(
@@ -141,7 +154,12 @@ def compute_quantification(
 
 
 @router.post("/measure", response_model=list[QuantificationDatasetOut])
-def measure(body: RegionIntensityRequest, db: Session = Depends(get_db)):
+def measure(
+    body: RegionIntensityRequest,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
     """The main quantification table for one series: one fluorescent
     channel's intensity over a specific sub-region of each cell -- whole
     area, or outline/centerline as one column per sampled point along it (an
@@ -152,9 +170,7 @@ def measure(body: RegionIntensityRequest, db: Session = Depends(get_db)):
     frames; set track=True to link "cell" across frames via CellMate's
     tracker + CellNetwork instead (see compute_series_measurements).
     Registered as a downloadable/viewable "features" dataset."""
-    series = db.get(ImageSeries, body.series_id)
-    if not series:
-        raise HTTPException(404, "Series not found")
+    series = access.require_series(db, body.series_id, user, visitor_session)
     if body.region not in quantification_compute.REGIONS:
         raise HTTPException(400, f"region must be one of {quantification_compute.REGIONS}")
     unknown_features = set(body.geometry_features) - set(quantification_compute.SELECTABLE_GEOMETRY_FEATURES)
@@ -213,16 +229,20 @@ def measure(body: RegionIntensityRequest, db: Session = Depends(get_db)):
     return [dataset]
 
 
-def _get_dataset(dataset_id: int, db: Session) -> QuantificationDataset:
-    dataset = db.get(QuantificationDataset, dataset_id)
-    if not dataset:
-        raise HTTPException(404, "Dataset not found")
-    return dataset
+def _get_dataset(
+    dataset_id: int, user: User | None, visitor_session: VisitorSession, db: Session
+) -> QuantificationDataset:
+    return access.require_dataset(db, dataset_id, user, visitor_session)
 
 
 @router.get("/{dataset_id}/download")
-def download_dataset(dataset_id: int, db: Session = Depends(get_db)):
-    dataset = _get_dataset(dataset_id, db)
+def download_dataset(
+    dataset_id: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    dataset = _get_dataset(dataset_id, user, visitor_session, db)
     path = Path(dataset.file_path)
     if not path.exists():
         raise HTTPException(404, "Dataset file missing on disk")
@@ -241,9 +261,11 @@ def get_features(
     limit: int = 200,
     sort_by: str | None = None,
     ascending: bool = True,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
     db: Session = Depends(get_db),
 ):
-    dataset = _get_dataset(dataset_id, db)
+    dataset = _get_dataset(dataset_id, user, visitor_session, db)
     try:
         columns, rows, total = quant_service.get_feature_page(
             dataset.file_path, offset, limit, sort_by, ascending
@@ -254,8 +276,13 @@ def get_features(
 
 
 @router.get("/{dataset_id}/tracking", response_model=TrackingTree)
-def get_tracking(dataset_id: int, db: Session = Depends(get_db)):
-    dataset = _get_dataset(dataset_id, db)
+def get_tracking(
+    dataset_id: int,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
+    db: Session = Depends(get_db),
+):
+    dataset = _get_dataset(dataset_id, user, visitor_session, db)
     try:
         nodes = quant_service.build_tracking_tree(dataset.file_path)
     except Exception as exc:
@@ -269,9 +296,11 @@ def get_tsne(
     perplexity: float = 30.0,
     id_column: str | None = None,
     color_by: str | None = None,
+    user: User | None = Depends(get_current_user),
+    visitor_session: VisitorSession = Depends(get_visitor_session),
     db: Session = Depends(get_db),
 ):
-    dataset = _get_dataset(dataset_id, db)
+    dataset = _get_dataset(dataset_id, user, visitor_session, db)
     try:
         ids, xs, ys = quant_service.compute_tsne(
             dataset.file_path, perplexity, id_column

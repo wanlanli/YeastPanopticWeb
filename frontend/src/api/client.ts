@@ -10,6 +10,7 @@ import type {
   SeriesTrackingMap,
   TrackingTree,
   TsneResult,
+  User,
 } from './types';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -30,11 +31,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // Auth
+  me: () => request<{ user: User | null }>('/api/auth/me'),
+  register: (email: string, password: string) =>
+    request<User>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+  login: (email: string, password: string) =>
+    request<User>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+  logout: () => request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' }),
+
   // Projects
   listProjects: () => request<Project[]>('/api/projects'),
   createProject: (name: string) =>
     request<Project>('/api/projects', { method: 'POST', body: JSON.stringify({ name }) }),
   getProject: (id: number) => request<Project>(`/api/projects/${id}`),
+  deleteProject: (id: number) => request<{ ok: boolean }>(`/api/projects/${id}`, { method: 'DELETE' }),
 
   // Series
   listSeries: (projectId: number) =>

@@ -15,6 +15,80 @@
   margin-bottom: 24px;
 }
 
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.auth-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: #999;
+  padding-top: 4px;
+}
+
+.auth-status a {
+  color: #8ab4ff;
+  text-decoration: none;
+}
+
+.auth-status button {
+  background: none;
+  border: 1px solid #333;
+  color: #ccc;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.auth-status-cta {
+  background: #3d63dd;
+  color: #fff !important;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.sandbox-banner {
+  background: #1e1a10;
+  border: 1px solid #4a3c1a;
+  color: #d9c48a;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  margin-bottom: 24px;
+}
+
+.sandbox-banner a {
+  color: #f0d896;
+}
+
+.project-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.project-badge-sample {
+  background: #1a2e1e;
+  color: #8fd99f;
+}
+
+.project-badge-sandbox {
+  background: #2e2416;
+  color: #e0b876;
+}
+
 .create-project {
   display: flex;
   gap: 8px;

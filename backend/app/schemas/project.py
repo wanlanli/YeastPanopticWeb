@@ -13,3 +13,5 @@ class ProjectOut(BaseModel):
     id: int
     name: str
     created_at: datetime
+    is_sample: bool
+    is_sandbox: bool

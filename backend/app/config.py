@@ -35,3 +35,15 @@ PANOPTIC_SERVICE_URL = os.environ.get("PANOPTIC_SERVICE_URL", "")
 # /home/user/project/CellMate. Its Cython extensions must be built for
 # this backend's Python version first (see README).
 CELLMATE_PATH = os.environ.get("CELLMATE_PATH", "")
+
+# Auth/session cookie. SESSION_COOKIE_SECURE should be set true once the app
+# is served over HTTPS (a plain-HTTP browser silently drops `Secure`
+# cookies, which would break login on an unencrypted deployment).
+SESSION_COOKIE_NAME = "ypw_session"
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
+SESSION_TTL_DAYS = int(os.environ.get("SESSION_TTL_DAYS", "30"))
+
+# How long an anonymous visitor's sandbox project (and its uploads/
+# quantification output) survives before being swept -- see
+# app.services.sandbox_cleanup.
+SANDBOX_TTL_HOURS = float(os.environ.get("SANDBOX_TTL_HOURS", "2"))
