@@ -78,22 +78,12 @@ Stop everything with `./scripts/stop_all.sh`. Logs land in `logs/*.log`.
 
 ### Add the model weights
 
-The one thing that can't be fetched automatically — these are
-machine-specific and too large to check into either repo. Both are
-optional: skip either one and the app falls back to a classical-CV
-placeholder for that feature instead of crashing.
-
-- **Panoptic model weights** — the fine-tuned checkpoint + its matching
-  `config.yaml`, saved together. Copy that directory onto this machine
-  (e.g. `rsync -avP`) and set `PANOPTIC_MODEL_DIR` (`.env`) /
+- **Panoptic model weights** — copy the checkpoint directory onto this
+  machine and set `PANOPTIC_MODEL_DIR` (`.env`) /
   `PANOPTIC_MODEL_DIR_HOST` (`.env.docker`) to it.
 - **SAM checkpoint** — either copy an existing one and set
-  `SAM_CHECKPOINT_PATH` / `SAM_CHECKPOINT_HOST`, or fetch the public
-  official weights directly:
-  ```
-  cd sam_service && python3 scripts/download_checkpoint.py vit_h
-  ```
-  (`vit_b` is smaller/faster if this machine has no GPU.)
+  `SAM_CHECKPOINT_PATH` (`.env`) / `SAM_CHECKPOINT_HOST` (`.env.docker`)
+  to it, or fetch the public weights directly.
 
 ### Accessing it from another machine (by IP)
 
@@ -101,27 +91,6 @@ Only port **5173** needs to be reachable from wherever you're connecting
 from — the frontend proxies `/api/*` to the backend internally, so
 8000/8100/8200 never need to be open through a firewall. Check this
 server's IP with `hostname -I` if it's not obvious.
-
-### Troubleshooting
-
-- **`docker run --gpus all` fails with `could not select device driver
-  "nvidia"`, but `nvidia-smi` works on the host** — no root to install the
-  NVIDIA Container Toolkit. Use `docker-compose.external-ml.yml` (see
-  above) instead of the GPU override.
-- **`python3 -m venv` fails with "ensurepip is not available"** — the
-  `python3-venv` system package is missing and you have no root to install
-  it. Use `./scripts/setup_conda_envs.sh` instead; if conda isn't
-  available either, bootstrap pip manually with `python3 -m venv
-  --without-pip .venv && source .venv/bin/activate && curl -sS
-  https://bootstrap.pypa.io/get-pip.py | python3`, then install by hand.
-- **`pip install torch` hangs retrying `pypi.ngc.nvidia.com`** — some
-  machines (often NVIDIA NGC-container setups) have pip pointed at that
-  internal mirror; it's unreachable outside an actual NGC container. Set
-  `PIP_INDEX_URL=https://pypi.org/simple` before running the setup script.
-- **Already have working conda/venv envs with these deps under different
-  names?** Set `BACKEND_PYTHON` / `SAM_SERVICE_PYTHON` /
-  `PANOPTIC_SERVICE_PYTHON` in `.env` to their `python3` paths instead of
-  reinstalling into a fresh env — see the comments in `.env.example`.
 
 ## Development
 
