@@ -2,23 +2,13 @@
 # Starts all four YeastPanopticWeb processes (sam_service, panoptic_service,
 # backend, frontend) in the background and leaves them running.
 #
-# One-time setup (per service, before this script will work) -- pick ONE of:
+# One-time setup, before this script will work -- run ONE of these (both
+# fetch the companion repos, install every service's deps, and write .env
+# for you; the only thing left after either one is adding the panoptic
+# model weights, see .env's comments):
 #
-#   A) venv (default):
-#     cd backend          && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate
-#     cd sam_service       && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate
-#     cd panoptic_service  && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && pip install 'git+https://github.com/cocodataset/panopticapi.git' && deactivate
-#
-#   B) conda -- if `python3 -m venv` isn't usable (e.g. no sudo to install
-#      python3-venv) and conda is already on this machine, set
-#      PYTHON_ENV_MANAGER=conda in .env and instead create:
-#     conda create -n yeastpanoptic-backend python=3.10 -y && conda activate yeastpanoptic-backend && cd backend && pip install -r requirements.txt
-#     conda create -n yeastpanoptic-sam_service python=3.10 -y && conda activate yeastpanoptic-sam_service && cd sam_service && pip install -r requirements.txt
-#     conda create -n yeastpanoptic-panoptic_service python=3.10 -y && conda activate yeastpanoptic-panoptic_service && cd panoptic_service && pip install -r requirements.txt && pip install 'git+https://github.com/cocodataset/panopticapi.git'
-#
-# Either way, also:
-#   cd frontend          && npm install
-#   cp .env.example .env && edit the paths in it (see comments there)
+#   ./scripts/setup_venv_envs.sh    # default -- needs the python3-venv system package
+#   ./scripts/setup_conda_envs.sh   # use this instead if venv isn't available but conda is
 #
 # Then just:
 #   ./scripts/run_all.sh

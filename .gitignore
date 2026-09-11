@@ -13,6 +13,10 @@ panoptic_service/.venv/
 panoptic_service/storage/
 panoptic_service/PytrochDeepyeastDeploy/
 
+# Companion repos (PytrochDeepyeast, CellMate) -- cloned automatically by
+# scripts/fetch_models.sh into external/, not meant to be vendored here
+external/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
