@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
 # One-time setup for a server with: conda already installed, no sudo/root,
-# and (optionally) a GPU. Creates the three yeastpanoptic-* conda envs
-# scripts/run_all.sh expects and installs each service's deps into them --
-# nothing here needs root, and torch installs with GPU support
-# automatically from PyPI (no CUDA toolkit / driver install needed, as
-# long as `nvidia-smi` already works on this machine).
+# and (optionally) a GPU. Fetches the two companion repos (panoptic model
+# code, CellMate), creates the three yeastpanoptic-* conda envs
+# scripts/run_all.sh expects, installs each service's deps into them, and
+# builds CellMate's Cython extension -- nothing here needs root, and torch
+# installs with GPU support automatically from PyPI (no CUDA toolkit /
+# driver install needed, as long as `nvidia-smi` already works on this
+# machine).
 #
-# Safe to re-run: skips any env that already exists instead of recreating
-# it, so you can re-run this after a partial failure (e.g. a network blip
-# mid-install) without losing what already installed successfully.
+# Safe to re-run: skips any repo/env that already exists instead of
+# recreating it, so you can re-run this after a partial failure (e.g. a
+# network blip mid-install) without losing what already installed.
 #
 # Usage:
 #   ./scripts/setup_conda_envs.sh
 #
-# Then: cp .env.example .env, edit the paths in it (model repo, checkpoint,
-# CellMate -- see the comments in that file), set PYTHON_ENV_MANAGER=conda
-# in it, and ./scripts/run_all.sh starts everything.
+# Then: add the panoptic model weights (PANOPTIC_MODEL_DIR in .env -- the
+# only thing this script can't fetch for you, see .env's comments) and run
+# ./scripts/run_all.sh.
 #
 # Some machines (often ones set up for/by NVIDIA NGC container workflows)
 # have pip pre-configured to check pypi.ngc.nvidia.com -- NVIDIA's own
@@ -49,6 +51,8 @@ fi
 # shellcheck disable=SC1091
 source "$CONDA_BASE/etc/profile.d/conda.sh"
 
+"$REPO_ROOT/scripts/fetch_models.sh"
+
 create_env() {
   local name="$1"
   if conda env list | grep -qE "^${name}\s"; then
@@ -76,14 +80,38 @@ install_reqs yeastpanoptic-panoptic_service panoptic_service
 echo "== Installing panopticapi into yeastpanoptic-panoptic_service =="
 conda run -n yeastpanoptic-panoptic_service pip install 'git+https://github.com/cocodataset/panopticapi.git'
 
+MEASURE_DIR="$REPO_ROOT/external/CellMate/cellmate/image_measure/measure"
+echo "== Building CellMate's Cython extension for yeastpanoptic-backend's Python =="
+conda run -n yeastpanoptic-backend pip install Cython
+(cd "$MEASURE_DIR" && conda run -n yeastpanoptic-backend python setup.py build_ext --inplace)
+
+if [ ! -f "$REPO_ROOT/.env" ]; then
+  cp "$REPO_ROOT/.env.example" "$REPO_ROOT/.env"
+fi
+set_env_value() {
+  local key="$1" value="$2"
+  if grep -q "^${key}=" "$REPO_ROOT/.env"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$REPO_ROOT/.env"
+  else
+    echo "${key}=${value}" >> "$REPO_ROOT/.env"
+  fi
+}
+set_env_value PANOPTIC_REPO_PATH "$REPO_ROOT/external/PytrochDeepyeast"
+set_env_value CELLMATE_PATH "$REPO_ROOT/external/CellMate"
+set_env_value PYTHON_ENV_MANAGER conda
+
+if [ ! -d frontend/node_modules ]; then
+  echo "== Running npm install in frontend/ =="
+  (cd frontend && npm install)
+fi
+
 echo
 echo "======================================================================"
-echo "Done. Next steps:"
-echo "  1. cp .env.example .env   # then edit the paths in it (see the"
-echo "     comments in that file -- model repo, checkpoint, CellMate)"
-echo "  2. Add to .env: PYTHON_ENV_MANAGER=conda"
-echo "  3. cd frontend && npm install && cd .."
-echo "  4. ./scripts/run_all.sh"
+echo "Done. .env is set up and points at the cloned repos already."
+echo "Only thing left: add the panoptic model weights -- edit"
+echo "PANOPTIC_MODEL_DIR in .env (see its comment for what that is)."
+echo
+echo "Then:  ./scripts/run_all.sh"
 echo
 echo "GPU check once running (should print True if this machine has one):"
 echo "  $CONDA_BASE/envs/yeastpanoptic-sam_service/bin/python3 -c \"import torch; print(torch.cuda.is_available())\""

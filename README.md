@@ -6,228 +6,128 @@ polygons, request a mask from a point-prompt model, navigate frames, and
 browse precomputed quantification results (feature table, tracking/lineage
 tree, t-SNE).
 
-See `PLAN.md`-equivalent context in the original design plan for the full
-architecture writeup. Segmentation lives behind swappable interfaces at
-`backend/app/services/segmentation/`, with two models, each its own
-standalone HTTP service so heavy ML deps stay out of the main API process:
-
-- **Point-prompt (SAM)** — click a cell, get one mask back. Calls out to
-  `sam_service/` once running; falls back to a classical-CV placeholder
-  (region growing from the clicked point) otherwise.
-- **Whole-frame auto-segmentation (yeast panoptic model)** — one click,
-  every instance in the frame back (cell/shmoo/zygote/tetrad/lysis/spore),
-  each labeled by class. Calls out to `panoptic_service/` once running;
-  falls back to a classical-CV placeholder (Otsu threshold + connected
-  components, labeled "cell") otherwise.
-
 The app is four services: `backend` (FastAPI), `frontend` (Vite/React),
-and the two segmentation services above. Only `backend` + `frontend` are
-required — the segmentation services are optional, each falling back to a
-classical-CV placeholder when not running (see above).
+and two optional segmentation services, each its own process so heavy ML
+deps stay out of the main API:
+
+- **Point-prompt (SAM)** — click a cell, get one mask back.
+- **Whole-frame auto-segmentation** — one click, every instance in the
+  frame back (cell/shmoo/zygote/tetrad/lysis/spore), labeled by class.
+  Uses the [PytrochDeepyeast](https://github.com/wanlanli/PytrochDeepyeast)
+  model.
+
+Only `backend` + `frontend` are required. Either segmentation service
+missing or not configured falls back to a classical-CV placeholder, so the
+app always runs — segmentation just gets better once a model is wired up.
+Quantification uses [CellMate](https://github.com/wanlanli/CellMate).
 
 ## Installation
 
-Two ways to install and run this on a machine (your own, or a server):
-**Docker Compose**, or **conda/venv** Python environments directly on the
-host. Either way you need the same machine-specific config files first
-(model repos, weights, CellMate) — see "Configuration" below; every one
-of them degrades gracefully if left unset, so it's fine to install first
-and add them later.
+Pick **Docker** or **conda/venv**. Either way, the two companion repos
+above are fetched for you automatically — the only thing you need to add
+by hand afterward is the model weights (see "Add the model weights"
+below).
 
-|                | Docker Compose | conda / venv |
-|----------------|-----------------|--------------|
-| Best for       | more than one machine, or not wanting to manage 3 Python envs by hand | a single machine, quick iteration, no Docker available |
-| Isolation      | pins OS + Python version per service | uses whatever Python/OS is already on the host |
-| GPU setup      | needs the NVIDIA Container Toolkit (or the `external-ml` escape hatch, see below) | uses the host's driver directly, nothing extra to install |
-| CellMate build | automatic, inside the container, on first start | manual, once, matching the host's Python (see below) |
-
-### Option 1: Docker Compose
+### Option 1: Docker
 
 ```
 git clone https://github.com/wanlanli/YeastPanopticWeb.git && cd YeastPanopticWeb
-cp .env.docker.example .env.docker   # edit the paths in it -- see below
+cp .env.docker.example .env.docker   # add your model-weight paths -- see below
 docker compose --env-file .env.docker up -d --build
 ```
 
-Open `http://<this-server-ip>:5173` (only this port is published to the
-host -- see "Accessing it from another machine" below). CellMate's Cython
-extension is built automatically, once, the first time the `backend`
-container starts (verified against a genuinely fresh CellMate checkout:
-built cleanly, no manual step needed) -- inside the container, so it
-always matches that container's own Python, regardless of what's on the
-host.
+Open `http://<this-server-ip>:5173`. The companion repos are cloned in
+automatically while the images build; nothing to fetch by hand.
 
 Logs: `docker compose --env-file .env.docker logs -f [service]`. Stop:
-`docker compose --env-file .env.docker down` (add `-v` to also drop the
-backend's database/upload volume).
+`docker compose --env-file .env.docker down`.
 
-**Using a GPU?** By default Docker never exposes the host's GPU to any
-container -- that's true regardless of this project, not something to fix
-in `docker-compose.yml` alone. If this server has an NVIDIA GPU, add the
-`docker-compose.gpu.yml` override (see the comment at the top of that file
-for the one-time host prerequisite -- the NVIDIA Container Toolkit -- and
-how to verify it's working before trying this):
+**GPU?** Add the `docker-compose.gpu.yml` override (needs the NVIDIA
+Container Toolkit on the host — see the comment at the top of that file):
 
 ```
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml --env-file .env.docker up -d --build
 ```
 
-Confirm it's actually using the GPU (should print `True`):
-```
-docker compose --env-file .env.docker exec sam_service python3 -c "import torch; print(torch.cuda.is_available())"
-```
+No root to install the Container Toolkit? Use `docker-compose.external-ml.yml`
+instead — keeps backend+frontend in Docker and runs the segmentation
+services as plain host processes with direct GPU access. See the comment
+at the top of that file.
 
-**No root, so can't install the NVIDIA Container Toolkit?** (symptom:
-`docker run --gpus all ...` or the command above fails with `could not
-select device driver "nvidia"`, even though `nvidia-smi` works fine
-directly on the host.) There's no rootless workaround for that specific
-piece -- it registers a device-driver hook with the Docker daemon itself.
-Use `docker-compose.external-ml.yml` instead: it keeps backend+frontend in
-Docker (no GPU needed there) and runs sam_service/panoptic_service as
-plain host processes -- same GPU access `nvidia-smi` already has, zero
-Docker/root involvement, and if you already have conda envs with
-torch/detectron2/segment-anything installed, reuse them as-is. See the
-comment at the top of that file for the exact commands.
-
-### Option 2: conda or .venv (plain Python environments)
-
-One-time setup, then one script starts everything. Pick **venv** (needs
-the `python3-venv` system package) or **conda** (no system package
-needed, works if conda is already installed) -- both install the exact
-same things, just into different kinds of environment.
-
-**Using venv:**
+### Option 2: conda or venv
 
 ```
 git clone https://github.com/wanlanli/YeastPanopticWeb.git && cd YeastPanopticWeb
-
-cd backend          && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate && cd ..
-cd sam_service       && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate && cd ..
-cd panoptic_service  && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && pip install 'git+https://github.com/cocodataset/panopticapi.git' && deactivate && cd ..
-cd frontend          && npm install && cd ..
-
-cp .env.example .env   # then edit the paths in it -- see below
-./scripts/run_all.sh   # starts all 4 services, prints the URL to open
+./scripts/setup_venv_envs.sh
 ```
 
-**Using conda** (if `python3 -m venv` fails with "ensurepip is not
-available" -- that's the `python3-venv` system package missing, which
-normally needs `apt install`/root to fix -- or if conda is already what
-you use):
+That one script clones the companion repos, creates a `.venv` per service,
+installs every dependency, builds CellMate's Cython extension, runs
+`npm install`, and writes `.env` for you. Then just add the model weights
+(below) and:
 
 ```
-git clone https://github.com/wanlanli/YeastPanopticWeb.git && cd YeastPanopticWeb
-
-./scripts/setup_conda_envs.sh
-# creates yeastpanoptic-backend / -sam_service / -panoptic_service (python 3.10)
-# and installs each service's requirements.txt into the matching one.
-# Safe to re-run: skips any env that already exists, so a partial failure
-# (e.g. a network blip mid-install) doesn't lose what already installed.
-
-cd frontend && npm install && cd ..
-
-cp .env.example .env
-# then edit the paths in it -- see below -- and add:
-#   PYTHON_ENV_MANAGER=conda
-./scripts/run_all.sh   # starts all 4 services, prints the URL to open
+./scripts/run_all.sh
 ```
 
-No conda either? `python3 -m venv --without-pip .venv && source
-.venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py |
-python3` bootstraps pip manually, no new system packages needed (just
-outbound network access) -- then continue with the venv steps above.
-
-`torch` (in `sam_service`/`panoptic_service`) installs with GPU support
-automatically from PyPI -- no special index/CUDA setup needed, for either
-venv or conda. If this machine has an NVIDIA GPU + driver, it's used
-automatically (`torch.cuda.is_available()`); otherwise everything runs on
-CPU. Confirm with:
-
-```
-<env>/bin/python3 -c "import torch; print(torch.cuda.is_available())"
-```
-
-(`<env>` is `sam_service/.venv` for venv, or the path `conda info --base`
-prints joined with `envs/yeastpanoptic-sam_service`, for conda.)
+No `python3-venv` system package (and no root to install it)? Use
+`./scripts/setup_conda_envs.sh` instead — same one-command setup, using
+conda envs. Either script is safe to re-run if it fails partway through.
 
 Stop everything with `./scripts/stop_all.sh`. Logs land in `logs/*.log`.
 
-### Configuration (`.env` / `.env.docker`)
+### Add the model weights
 
-None of the following ship in this git repo -- they're two companion
-repos plus large binary weights, so a fresh checkout has none of them.
-Same underlying settings either way; `.env.example` (plain envs) uses the
-path directly, e.g. `CELLMATE_PATH=/path/to/CellMate`, while
-`.env.docker.example` (Docker) uses a `_HOST` suffix for the same thing,
-e.g. `CELLMATE_HOST=...`, since that's a host-machine path being mounted
-into a container rather than a path the app reads directly. See whichever
-`.example` file you're using for the full list; the short version:
+The one thing that can't be fetched automatically — these are
+machine-specific and too large to check into either repo. Both are
+optional: skip either one and the app falls back to a classical-CV
+placeholder for that feature instead of crashing.
 
-**1. Clone the two companion repos** (each is its own repo, not part of
-YeastPanopticWeb):
-
-```
-git clone https://github.com/wanlanli/PytrochDeepyeast.git /path/to/PytrochDeepyeast
-git clone https://github.com/wanlanli/CellMate.git /path/to/CellMate
-```
-
-Point `PANOPTIC_REPO_PATH` / `PANOPTIC_REPO_HOST` and `CELLMATE_PATH` /
-`CELLMATE_HOST` at wherever you cloned them.
-
-**2. Add the weights** -- the one part that's actually machine-specific,
-since model weights aren't checked into either repo:
-
-- **Panoptic model weights** (`PANOPTIC_MODEL_DIR` / `PANOPTIC_MODEL_DIR_HOST`)
-  — the fine-tuned checkpoint + its matching `config.yaml`, saved together.
-  Copy this directory over from wherever it's stored (e.g. `rsync -avP`).
-- **SAM checkpoint** (`SAM_CHECKPOINT_PATH` / `SAM_CHECKPOINT_HOST`, plus
-  `SAM_MODEL_TYPE`) — either copy an existing checkpoint here, or run `cd
-  sam_service && python3 scripts/download_checkpoint.py vit_h` (or `vit_b`
-  for a smaller/faster model if this server has no GPU) to fetch the
-  official one directly.
-
-**3. Build CellMate's Cython extension** — with Docker, this happens
-automatically inside the container on first start (see above), nothing to
-do here. Without Docker, **it must be built for this machine's own Python
-version** (a `.so` built elsewhere won't load if the Python version
-differs):
-
-```
-cd /path/to/CellMate/cellmate/image_measure/measure
-pip install Cython   # into whichever venv/conda env you build with
-python3 setup.py build_ext --inplace
-```
-
-**4. Leave as-is unless you know you need to change it:**
-`SAM_SERVICE_URL` / `PANOPTIC_SERVICE_URL` (plain envs only -- Docker
-Compose wires these up automatically via container names) can usually
-stay as `http://localhost:8100` / `:8200` -- only change these if you're
-running those services on a different machine than the backend.
-
-Every one of the above degrades gracefully if left unset, rather than
-crashing: without the panoptic repo/weights, `panoptic_service` starts but
-`/health` reports why it can't load, and the backend falls back to a
-classical-CV placeholder for auto-segmentation; same idea for SAM and
-CellMate.
+- **Panoptic model weights** — the fine-tuned checkpoint + its matching
+  `config.yaml`, saved together. Copy that directory onto this machine
+  (e.g. `rsync -avP`) and set `PANOPTIC_MODEL_DIR` (`.env`) /
+  `PANOPTIC_MODEL_DIR_HOST` (`.env.docker`) to it.
+- **SAM checkpoint** — either copy an existing one and set
+  `SAM_CHECKPOINT_PATH` / `SAM_CHECKPOINT_HOST`, or fetch the public
+  official weights directly:
+  ```
+  cd sam_service && python3 scripts/download_checkpoint.py vit_h
+  ```
+  (`vit_b` is smaller/faster if this machine has no GPU.)
 
 ### Accessing it from another machine (by IP)
 
-Either option only needs port **5173** reachable from wherever you're
-connecting from -- the frontend dev server proxies `/api/*` to the backend
-internally, so the other three ports (8000/8100/8200) don't need to be
-open through any firewall (Docker Compose doesn't even publish them to the
-host at all by default -- see `docker-compose.yml`). `scripts/run_all.sh`
-binds every service to `0.0.0.0` and prints the URL to use
-(`http://<this-server-ip>:5173`); Docker Compose's `frontend` service does
-the same via its `ports:` mapping. Check the server's own IP with
-`hostname -I` if it's not obvious (e.g. it changed, or you're on a
-different network).
+Only port **5173** needs to be reachable from wherever you're connecting
+from — the frontend proxies `/api/*` to the backend internally, so
+8000/8100/8200 never need to be open through a firewall. Check this
+server's IP with `hostname -I` if it's not obvious.
+
+### Troubleshooting
+
+- **`docker run --gpus all` fails with `could not select device driver
+  "nvidia"`, but `nvidia-smi` works on the host** — no root to install the
+  NVIDIA Container Toolkit. Use `docker-compose.external-ml.yml` (see
+  above) instead of the GPU override.
+- **`python3 -m venv` fails with "ensurepip is not available"** — the
+  `python3-venv` system package is missing and you have no root to install
+  it. Use `./scripts/setup_conda_envs.sh` instead; if conda isn't
+  available either, bootstrap pip manually with `python3 -m venv
+  --without-pip .venv && source .venv/bin/activate && curl -sS
+  https://bootstrap.pypa.io/get-pip.py | python3`, then install by hand.
+- **`pip install torch` hangs retrying `pypi.ngc.nvidia.com`** — some
+  machines (often NVIDIA NGC-container setups) have pip pointed at that
+  internal mirror; it's unreachable outside an actual NGC container. Set
+  `PIP_INDEX_URL=https://pypi.org/simple` before running the setup script.
+- **Already have working conda/venv envs with these deps under different
+  names?** Set `BACKEND_PYTHON` / `SAM_SERVICE_PYTHON` /
+  `PANOPTIC_SERVICE_PYTHON` in `.env` to their `python3` paths instead of
+  reinstalling into a fresh env — see the comments in `.env.example`.
 
 ## Development
 
 Working on just the backend or frontend, without the segmentation
-services? These run standalone against the placeholder fallbacks -- no
-model checkpoints needed.
+services? These run standalone against the placeholder fallbacks — no
+model weights needed.
 
 ### Backend
 
@@ -250,11 +150,6 @@ SAM_SERVICE_URL=http://localhost:8100 \
 PANOPTIC_SERVICE_URL=http://localhost:8200 \
 uvicorn app.main:app --reload --port 8000
 ```
-
-`sam_service` works out of the box with the official SAM weights;
-`panoptic_service` additionally needs the
-[PytrochDeepyeast](https://github.com/wanlanli/PytrochDeepyeast) repo
-plus its fine-tuned checkpoint (see its README) before it'll actually load.
 
 #### Sample project
 

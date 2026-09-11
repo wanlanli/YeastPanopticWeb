@@ -1,5 +1,5 @@
 # Brings up all four services. One-time setup:
-#   cp .env.docker.example .env.docker   # then edit the HOST paths in it
+#   cp .env.docker.example .env.docker   # then add your model weight paths
 #   docker compose --env-file .env.docker up -d --build
 #
 # Open http://<this-server-ip>:5173 -- that's the only port published to
@@ -7,10 +7,10 @@
 # services over docker-compose's internal network, so 8000/8100/8200 never
 # need to be exposed through a firewall.
 #
-# CellMate's Cython extension (for quantification) is built automatically,
-# once, the first time the backend container starts (see
-# backend/docker-entrypoint.sh) -- against this image's own Python, so it
-# always matches, unlike copying a .so built on a different machine.
+# The panoptic model repo and CellMate are cloned in and (for CellMate)
+# built at image-build time -- see panoptic_service/Dockerfile and
+# backend/Dockerfile -- so only the actual model weights (machine-specific,
+# not part of either repo) are mounted in from the host below.
 #
 # Logs: docker compose logs -f [service]
 # Stop: docker compose down
@@ -30,10 +30,8 @@ services:
   panoptic_service:
     build: ./panoptic_service
     environment:
-      PANOPTIC_REPO_PATH: /model_repo
       PANOPTIC_MODEL_DIR: /model_dir
     volumes:
-      - ${PANOPTIC_REPO_HOST}:/model_repo:ro
       - ${PANOPTIC_MODEL_DIR_HOST}:/model_dir:ro
     # ports:
     #   - "8200:8200"
@@ -43,9 +41,7 @@ services:
     environment:
       SAM_SERVICE_URL: http://sam_service:8100
       PANOPTIC_SERVICE_URL: http://panoptic_service:8200
-      CELLMATE_PATH: /cellmate
     volumes:
-      - ${CELLMATE_HOST}:/cellmate # read-write: the Cython build writes .so files here
       - backend_storage:/app/storage
     depends_on:
       - sam_service
