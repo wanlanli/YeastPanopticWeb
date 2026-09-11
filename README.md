@@ -20,68 +20,28 @@ standalone HTTP service so heavy ML deps stay out of the main API process:
   falls back to a classical-CV placeholder (Otsu threshold + connected
   components, labeled "cell") otherwise.
 
-## Backend
+The app is four services: `backend` (FastAPI), `frontend` (Vite/React),
+and the two segmentation services above. Only `backend` + `frontend` are
+required — the segmentation services are optional, each falling back to a
+classical-CV placeholder when not running (see above).
 
-```
-cd backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-```
+## Installation
 
-Storage (SQLite DB, registered/uploaded images, quantification files) lives
-under `backend/storage/`, created automatically on first run.
+Two ways to install and run this on a machine (your own, or a server):
+**Docker Compose**, or **conda/venv** Python environments directly on the
+host. Either way you need the same machine-specific config files first
+(model repo, checkpoints, CellMate) — see "Config you need to change"
+below; every one of them degrades gracefully if left unset, so it's fine
+to install first and add them later.
 
-### Sample project
+|                | Docker Compose | conda / venv |
+|----------------|-----------------|--------------|
+| Best for       | more than one machine, or not wanting to manage 3 Python envs by hand | a single machine, quick iteration, no Docker available |
+| Isolation      | pins OS + Python version per service | uses whatever Python/OS is already on the host |
+| GPU setup      | needs the NVIDIA Container Toolkit (or the `external-ml` escape hatch, see below) | uses the host's driver directly, nothing extra to install |
+| CellMate build | automatic, inside the container, on first start | manual, once, matching the host's Python (see below) |
 
-If `sample_data/yeast_demo/` (gitignored -- local test fixtures, not
-version controlled) contains an image folder, the backend seeds a "Sample
-Project" pointing at it on first startup, so there's something to open
-immediately. This is a one-time, idempotent seed keyed by project name --
-delete the project from the UI and restart the backend to reseed it, or
-just add more folders under `sample_data/` and register them yourself from
-the Viewer.
-
-### Segmentation services
-
-See `sam_service/README.md` and `panoptic_service/README.md` to run each
-model service (separate processes). Once they're up, point the backend at
-them:
-
-```
-SAM_SERVICE_URL=http://localhost:8100 \
-PANOPTIC_SERVICE_URL=http://localhost:8200 \
-uvicorn app.main:app --reload --port 8000
-```
-
-Either (or both) can be left unset — the app falls back to the matching
-classical-CV placeholder so it still runs with no extra setup. `sam_service`
-works out of the box with the official SAM weights; `panoptic_service`
-additionally needs the private fine-tuned model repo and checkpoint (see
-its README) before it'll actually load.
-
-## Frontend
-
-```
-cd frontend
-npm install
-npm run dev
-```
-
-Open http://localhost:5173. The dev server proxies `/api` to
-`http://localhost:8000`.
-
-## Deploying to another machine (e.g. a server)
-
-Two ways to run it there: plain Python envs (`scripts/run_all.sh`) or
-Docker Compose. Docker is the better choice if this needs to run on more
-than one machine, or if you'd rather not manage three separate Python
-environments by hand -- it pins the OS + Python version per service, so
-"works here, breaks there" mostly goes away. Either way, the same
-machine-specific files (model repo, checkpoints, CellMate) are needed; see
-"Config you need to change" below.
-
-### Option A: Docker Compose
+### Option 1: Docker Compose
 
 ```
 git clone <this repo> && cd YeastPanopticWeb
@@ -91,10 +51,11 @@ docker compose --env-file .env.docker up -d --build
 
 Open `http://<this-server-ip>:5173` (only this port is published to the
 host -- see "Accessing it from another machine" below). CellMate's Cython
-extension is built automatically, once, the first time the `backend`
-container starts (verified against a genuinely fresh CellMate checkout:
-built cleanly, no manual step needed) -- inside the container, so it always
-matches that container's own Python, regardless of what's on the host.
+extension is built automatically, once, the
+first time the `backend` container starts (verified against a genuinely
+fresh CellMate checkout: built cleanly, no manual step needed) -- inside
+the container, so it always matches that container's own Python,
+regardless of what's on the host.
 
 Logs: `docker compose --env-file .env.docker logs -f [service]`. Stop:
 `docker compose --env-file .env.docker down` (add `-v` to also drop the
@@ -128,9 +89,14 @@ Docker/root involvement, and if you already have conda envs with
 torch/detectron2/segment-anything installed, reuse them as-is. See the
 comment at the top of that file for the exact commands.
 
-### Option B: plain Python envs
+### Option 2: conda or .venv (plain Python environments)
 
-One-time setup, then one script starts everything:
+One-time setup, then one script starts everything. Pick **venv** (needs
+the `python3-venv` system package) or **conda** (no system package
+needed, works if conda is already installed) -- both install the exact
+same things, just into different kinds of environment.
+
+**Using venv:**
 
 ```
 git clone <this repo> && cd YeastPanopticWeb
@@ -144,24 +110,45 @@ cp .env.example .env   # then edit the paths in it -- see below
 ./scripts/run_all.sh   # starts all 4 services, prints the URL to open
 ```
 
-`torch` (in `sam_service`/`panoptic_service`) installs with GPU support
-automatically from PyPI -- no special index/CUDA setup needed. If this
-machine has an NVIDIA GPU + driver, it's used automatically
-(`torch.cuda.is_available()`); otherwise everything runs on CPU.
+**Using conda** (if `python3 -m venv` fails with "ensurepip is not
+available" -- that's the `python3-venv` system package missing, which
+normally needs `apt install`/root to fix -- or if conda is already what
+you use):
 
-**No sudo, and `python3 -m venv` fails with "ensurepip is not
-available"?** That's the `python3-venv` system package missing, which
-normally needs `apt install` (root) to fix. If conda is already on this
-machine (`which conda`), set `PYTHON_ENV_MANAGER=conda` in `.env` and
-create conda envs instead of venvs -- either run `./scripts/setup_conda_envs.sh`
-(creates and installs into all three envs in one go, safe to re-run if it
-fails partway through) or do it by hand -- see the comment at the top of
-`scripts/run_all.sh` for the exact commands (naming convention:
-`yeastpanoptic-backend`, `yeastpanoptic-sam_service`,
-`yeastpanoptic-panoptic_service`). No conda either? `python3 -m venv
---without-pip .venv && source .venv/bin/activate && curl -sS
-https://bootstrap.pypa.io/get-pip.py | python3` bootstraps pip manually,
-no new system packages needed (just outbound network access).
+```
+git clone <this repo> && cd YeastPanopticWeb
+
+./scripts/setup_conda_envs.sh
+# creates yeastpanoptic-backend / -sam_service / -panoptic_service (python 3.10)
+# and installs each service's requirements.txt into the matching one.
+# Safe to re-run: skips any env that already exists, so a partial failure
+# (e.g. a network blip mid-install) doesn't lose what already installed.
+
+cd frontend && npm install && cd ..
+
+cp .env.example .env
+# then edit the paths in it -- see below -- and add:
+#   PYTHON_ENV_MANAGER=conda
+./scripts/run_all.sh   # starts all 4 services, prints the URL to open
+```
+
+No conda either? `python3 -m venv --without-pip .venv && source
+.venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py |
+python3` bootstraps pip manually, no new system packages needed (just
+outbound network access) -- then continue with the venv steps above.
+
+`torch` (in `sam_service`/`panoptic_service`) installs with GPU support
+automatically from PyPI -- no special index/CUDA setup needed, for either
+venv or conda. If this machine has an NVIDIA GPU + driver, it's used
+automatically (`torch.cuda.is_available()`); otherwise everything runs on
+CPU. Confirm with:
+
+```
+<env>/bin/python3 -c "import torch; print(torch.cuda.is_available())"
+```
+
+(`<env>` is `sam_service/.venv` for venv, or the path `conda info --base`
+prints joined with `envs/yeastpanoptic-sam_service`, for conda.)
 
 Stop everything with `./scripts/stop_all.sh`. Logs land in `logs/*.log`.
 
@@ -220,6 +207,59 @@ binds every service to `0.0.0.0` and prints the URL to use
 the same via its `ports:` mapping. Check the server's own IP with
 `hostname -I` if it's not obvious (e.g. it changed, or you're on a
 different network).
+
+## Development
+
+Working on just the backend or frontend, without the segmentation
+services? These run standalone against the placeholder fallbacks -- no
+model checkpoints needed.
+
+### Backend
+
+```
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+Storage (SQLite DB, registered/uploaded images, quantification files) lives
+under `backend/storage/`, created automatically on first run.
+
+To also exercise the real segmentation models instead of the placeholders,
+start `sam_service`/`panoptic_service` (see their own READMEs) and point
+the backend at them:
+
+```
+SAM_SERVICE_URL=http://localhost:8100 \
+PANOPTIC_SERVICE_URL=http://localhost:8200 \
+uvicorn app.main:app --reload --port 8000
+```
+
+`sam_service` works out of the box with the official SAM weights;
+`panoptic_service` additionally needs the private fine-tuned model repo
+and checkpoint (see its README) before it'll actually load.
+
+#### Sample project
+
+If `sample_data/yeast_demo/` (gitignored -- local test fixtures, not
+version controlled) contains an image folder, the backend seeds a "Sample
+Project" pointing at it on first startup, so there's something to open
+immediately. This is a one-time, idempotent seed keyed by project name --
+delete the project from the UI and restart the backend to reseed it, or
+just add more folders under `sample_data/` and register them yourself from
+the Viewer.
+
+### Frontend
+
+```
+cd frontend
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. The dev server proxies `/api` to
+`http://localhost:8000`.
 
 ## Trying it out
 
