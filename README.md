@@ -30,9 +30,9 @@ classical-CV placeholder when not running (see above).
 Two ways to install and run this on a machine (your own, or a server):
 **Docker Compose**, or **conda/venv** Python environments directly on the
 host. Either way you need the same machine-specific config files first
-(model repo, checkpoints, CellMate) — see "Config you need to change"
-below; every one of them degrades gracefully if left unset, so it's fine
-to install first and add them later.
+(model repos, weights, CellMate) — see "Configuration" below; every one
+of them degrades gracefully if left unset, so it's fine to install first
+and add them later.
 
 |                | Docker Compose | conda / venv |
 |----------------|-----------------|--------------|
@@ -44,18 +44,18 @@ to install first and add them later.
 ### Option 1: Docker Compose
 
 ```
-git clone <this repo> && cd YeastPanopticWeb
+git clone https://github.com/wanlanli/YeastPanopticWeb.git && cd YeastPanopticWeb
 cp .env.docker.example .env.docker   # edit the paths in it -- see below
 docker compose --env-file .env.docker up -d --build
 ```
 
 Open `http://<this-server-ip>:5173` (only this port is published to the
 host -- see "Accessing it from another machine" below). CellMate's Cython
-extension is built automatically, once, the
-first time the `backend` container starts (verified against a genuinely
-fresh CellMate checkout: built cleanly, no manual step needed) -- inside
-the container, so it always matches that container's own Python,
-regardless of what's on the host.
+extension is built automatically, once, the first time the `backend`
+container starts (verified against a genuinely fresh CellMate checkout:
+built cleanly, no manual step needed) -- inside the container, so it
+always matches that container's own Python, regardless of what's on the
+host.
 
 Logs: `docker compose --env-file .env.docker logs -f [service]`. Stop:
 `docker compose --env-file .env.docker down` (add `-v` to also drop the
@@ -99,7 +99,7 @@ same things, just into different kinds of environment.
 **Using venv:**
 
 ```
-git clone <this repo> && cd YeastPanopticWeb
+git clone https://github.com/wanlanli/YeastPanopticWeb.git && cd YeastPanopticWeb
 
 cd backend          && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate && cd ..
 cd sam_service       && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && deactivate && cd ..
@@ -116,7 +116,7 @@ normally needs `apt install`/root to fix -- or if conda is already what
 you use):
 
 ```
-git clone <this repo> && cd YeastPanopticWeb
+git clone https://github.com/wanlanli/YeastPanopticWeb.git && cd YeastPanopticWeb
 
 ./scripts/setup_conda_envs.sh
 # creates yeastpanoptic-backend / -sam_service / -panoptic_service (python 3.10)
@@ -152,45 +152,60 @@ prints joined with `envs/yeastpanoptic-sam_service`, for conda.)
 
 Stop everything with `./scripts/stop_all.sh`. Logs land in `logs/*.log`.
 
-### Config you need to change (`.env` / `.env.docker`)
+### Configuration (`.env` / `.env.docker`)
 
-None of these live in this git repo -- they're large, machine-specific, or
-private, so a fresh checkout has none of them. Same underlying files
-either way; `.env.example` (plain envs) uses the path directly, e.g.
-`CELLMATE_PATH=/path/to/CellMate`, while `.env.docker.example` (Docker)
-uses a `_HOST` suffix for the same thing, e.g. `CELLMATE_HOST=...`, since
-that's a host-machine path being mounted into a container rather than a
-path the app reads directly. See whichever `.example` file you're using
-for the full list; the short version:
+None of the following ship in this git repo -- they're two companion
+repos plus large binary weights, so a fresh checkout has none of them.
+Same underlying settings either way; `.env.example` (plain envs) uses the
+path directly, e.g. `CELLMATE_PATH=/path/to/CellMate`, while
+`.env.docker.example` (Docker) uses a `_HOST` suffix for the same thing,
+e.g. `CELLMATE_HOST=...`, since that's a host-machine path being mounted
+into a container rather than a path the app reads directly. See whichever
+`.example` file you're using for the full list; the short version:
 
-- **panoptic model repo** (`PANOPTIC_REPO_PATH` / `PANOPTIC_REPO_HOST`) — a
-  separate private repo (detectron2 code the panoptic model needs).
-  Copy/clone it onto this machine first.
-- **panoptic model dir** (`PANOPTIC_MODEL_DIR` / `PANOPTIC_MODEL_DIR_HOST`)
+**1. Clone the two companion repos** (each is its own repo, not part of
+YeastPanopticWeb):
+
+```
+git clone https://github.com/wanlanli/PytrochDeepyeast.git /path/to/PytrochDeepyeast
+git clone https://github.com/wanlanli/CellMate.git /path/to/CellMate
+```
+
+Point `PANOPTIC_REPO_PATH` / `PANOPTIC_REPO_HOST` and `CELLMATE_PATH` /
+`CELLMATE_HOST` at wherever you cloned them.
+
+**2. Add the weights** -- the one part that's actually machine-specific,
+since model weights aren't checked into either repo:
+
+- **Panoptic model weights** (`PANOPTIC_MODEL_DIR` / `PANOPTIC_MODEL_DIR_HOST`)
   — the fine-tuned checkpoint + its matching `config.yaml`, saved together.
-  Copy this directory over (e.g. `rsync -avP` from wherever it currently
-  lives).
+  Copy this directory over from wherever it's stored (e.g. `rsync -avP`).
 - **SAM checkpoint** (`SAM_CHECKPOINT_PATH` / `SAM_CHECKPOINT_HOST`, plus
   `SAM_MODEL_TYPE`) — either copy an existing checkpoint here, or run `cd
   sam_service && python3 scripts/download_checkpoint.py vit_h` (or `vit_b`
   for a smaller/faster model if this server has no GPU) to fetch the
   official one directly.
-- **CellMate** (`CELLMATE_PATH` / `CELLMATE_HOST`) — a checkout of the
-  CellMate quantification library. With Docker, its Cython extension
-  builds itself automatically inside the container on first start (see
-  above). Without Docker, **it must already be built for this machine's
-  own Python version** (a `.so` built elsewhere won't load if the Python
-  version differs) -- `pip install Cython` then `python3 setup.py
-  build_ext --inplace` in `cellmate/image_measure/measure/`. Without this
-  set, quantification features return a clear error but everything else
-  still works.
-- `SAM_SERVICE_URL` / `PANOPTIC_SERVICE_URL` (plain envs only -- Docker
-  Compose wires these up automatically via container names) can usually
-  stay as `http://localhost:8100` / `:8200` -- only change these if you're
-  running those services on a different machine than the backend.
 
-Any of the above left unset degrades gracefully rather than crashing:
-without the panoptic repo/model dir, `panoptic_service` starts but
+**3. Build CellMate's Cython extension** — with Docker, this happens
+automatically inside the container on first start (see above), nothing to
+do here. Without Docker, **it must be built for this machine's own Python
+version** (a `.so` built elsewhere won't load if the Python version
+differs):
+
+```
+cd /path/to/CellMate/cellmate/image_measure/measure
+pip install Cython   # into whichever venv/conda env you build with
+python3 setup.py build_ext --inplace
+```
+
+**4. Leave as-is unless you know you need to change it:**
+`SAM_SERVICE_URL` / `PANOPTIC_SERVICE_URL` (plain envs only -- Docker
+Compose wires these up automatically via container names) can usually
+stay as `http://localhost:8100` / `:8200` -- only change these if you're
+running those services on a different machine than the backend.
+
+Every one of the above degrades gracefully if left unset, rather than
+crashing: without the panoptic repo/weights, `panoptic_service` starts but
 `/health` reports why it can't load, and the backend falls back to a
 classical-CV placeholder for auto-segmentation; same idea for SAM and
 CellMate.
@@ -237,8 +252,9 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 `sam_service` works out of the box with the official SAM weights;
-`panoptic_service` additionally needs the private fine-tuned model repo
-and checkpoint (see its README) before it'll actually load.
+`panoptic_service` additionally needs the
+[PytrochDeepyeast](https://github.com/wanlanli/PytrochDeepyeast) repo
+plus its fine-tuned checkpoint (see its README) before it'll actually load.
 
 #### Sample project
 
