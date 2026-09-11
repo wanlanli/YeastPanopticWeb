@@ -233,6 +233,44 @@ def probe_series(source_type: str, path: str) -> SeriesMetadata:
     raise ValueError(f"Unknown source_type: {source_type}")
 
 
+def frame_shape(source_type: str, path: str, frame_index: int) -> tuple[int, int]:
+    """(height, width) of one specific frame -- read from that frame's own
+    header, NOT the series-level SeriesMetadata.width/height (which, for a
+    folder/upload of separately-sized images, only reflects the *first*
+    file). Callers that rasterize polygons back into a mask must size the
+    canvas from this, not the series-level fields, or masks for any frame
+    other than the first come out clipped/misaligned when frames differ in
+    size."""
+    p = Path(path)
+    if source_type == "multipage_tiff":
+        with tifffile.TiffFile(p) as tf:
+            series0 = tf.series[0]
+            nonspatial_axes, nonspatial_shape = _nonspatial_axes_shape(series0)
+            if nonspatial_axes:
+                page_index = _tiff_page_index(nonspatial_axes, nonspatial_shape, frame_index, None)
+            else:
+                page_index = frame_index
+                if page_index < 0 or page_index >= len(tf.pages):
+                    raise IndexError(f"frame_index {frame_index} out of range")
+            page = tf.pages[page_index]
+            return page.shape[0], page.shape[1]
+
+    if source_type in ("folder", "upload"):
+        files = sorted_frame_files(p)
+        if frame_index < 0 or frame_index >= len(files):
+            raise IndexError(f"frame_index {frame_index} out of range")
+        f = files[frame_index]
+        if f.suffix.lower() in (".tif", ".tiff"):
+            with tifffile.TiffFile(f) as tf:
+                page = tf.pages[0]
+                return page.shape[0], page.shape[1]
+        with Image.open(f) as img:
+            w, h = img.size
+            return h, w
+
+    raise ValueError(f"Unknown source_type: {source_type}")
+
+
 def _read_single_frame_file(path: Path) -> np.ndarray:
     if path.suffix.lower() in (".tif", ".tiff"):
         return tifffile.imread(path)

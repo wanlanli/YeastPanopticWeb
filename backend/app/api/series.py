@@ -264,7 +264,8 @@ def get_frame_mask(
         raise HTTPException(404, f"frame_index {frame_index} out of range")
 
     polygons = _frame_polygons(db, series_id, frame_index)
-    mask = mask_io.rasterize_polygons(polygons, series.height, series.width)
+    h, w = image_io.frame_shape(series.source_type, series.path, frame_index)
+    mask = mask_io.rasterize_polygons(polygons, h, w)
     tiff_bytes = mask_io.mask_to_tiff_bytes(mask)
     filename = f"{_source_stem(series, frame_index)}_mask.tif"
     return Response(
@@ -384,7 +385,8 @@ def get_series_mask(
             polygons = [
                 (str(frame_map[label]) if label in frame_map else label, points) for label, points in polygons
             ]
-        frames.append(mask_io.rasterize_polygons(polygons, series.height, series.width))
+        h, w = image_io.frame_shape(series.source_type, series.path, frame_index)
+        frames.append(mask_io.rasterize_polygons(polygons, h, w))
 
     suffix = "_tracked" if tracked else ""
 

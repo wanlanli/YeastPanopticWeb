@@ -124,6 +124,13 @@ export function ImageCanvas() {
       )
     : null;
   const image = useHtmlImage(imageUrl);
+  // The current frame's own real pixel size -- NOT series.width/height,
+  // which is only probed from the series' *first* file and goes stale for
+  // any other frame once a folder/upload series mixes differently-sized
+  // images (see backend/app/services/image_io.frame_shape). Falls back to
+  // the series-level size before the frame's image has loaded.
+  const frameWidth = image?.naturalWidth || series?.width || 0;
+  const frameHeight = image?.naturalHeight || series?.height || 0;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -380,7 +387,7 @@ export function ImageCanvas() {
     if (!pt) return;
 
     if (tool === 'draw') {
-      const clamped = clampToImage(pt, series.width, series.height);
+      const clamped = clampToImage(pt, frameWidth, frameHeight);
       if (draftPoints.length >= 3) {
         // click back on the starting point to close the loop -- deliberate
         // and unambiguous, unlike relying on double-click timing
@@ -538,7 +545,7 @@ export function ImageCanvas() {
               setTransform((t) => ({ ...t, x: e.target.x(), y: e.target.y() }));
             }}
           >
-            {image && <KonvaImage image={image} width={series.width} height={series.height} />}
+            {image && <KonvaImage image={image} width={frameWidth} height={frameHeight} />}
 
             {showMasks &&
               polygons.map((poly) => (

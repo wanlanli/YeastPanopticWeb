@@ -408,11 +408,7 @@ def _compute_tracked_measurements(
     per tracked cell over its own lifetime rather than per independent
     frame."""
     masks = [frame_mask(db, series, f) for f in range(series.frame_count)]
-    mask_stack = (
-        np.stack(masks, axis=0)
-        if masks
-        else np.zeros((0, series.height, series.width), dtype=np.uint16)
-    )
+    mask_stack = _stack_masks(series, masks)
     if mask_stack.shape[0] == 0 or not mask_stack.any():
         return pd.DataFrame()
 
@@ -607,7 +603,30 @@ def frame_mask(db: Session, series: ImageSeries, frame_index: int) -> np.ndarray
         .all()
     )
     polys = [(p.label, p.points) for p in rows]
-    return mask_io.rasterize_polygons(polys, series.height, series.width)
+    h, w = image_io.frame_shape(series.source_type, series.path, frame_index)
+    return mask_io.rasterize_polygons(polys, h, w)
+
+
+def _stack_masks(series: ImageSeries, masks: list[np.ndarray]) -> np.ndarray:
+    """Stack per-frame masks for cross-frame tracking, which -- like
+    CellMate's IOU tracker -- assumes every frame shares one coordinate
+    space. That's true for a multipage-tiff movie but not guaranteed for a
+    folder/upload of separately-sized images; fail with a clear message
+    instead of letting np.stack raise an opaque shape-mismatch error (or,
+    worse, a stale series-level width/height silently producing masks that
+    don't match their own frame -- see image_io.frame_shape)."""
+    if not masks:
+        return np.zeros((0, series.height, series.width), dtype=np.uint16)
+    shapes = {m.shape for m in masks}
+    if len(shapes) > 1:
+        raise RuntimeError(
+            "Cross-frame tracking requires every frame to be the same size, "
+            f"but this series has frames of different sizes ({sorted(shapes)}). "
+            "Tracking only makes sense for a real time-lapse movie -- for a "
+            "folder/upload of independently-sized images, use per-frame "
+            "measurements without tracking instead."
+        )
+    return np.stack(masks, axis=0)
 
 
 def compute_series_quantification(
@@ -634,17 +653,20 @@ def compute_series_quantification(
     non_dic_channels = _series_non_dic_channels(series)
 
     masks = [frame_mask(db, series, f) for f in range(series.frame_count)]
-    mask_stack = (
-        np.stack(masks, axis=0)
-        if masks
-        else np.zeros((0, series.height, series.width), dtype=np.uint16)
-    )
+
+    # Cross-frame tracking assumes every frame shares one coordinate space
+    # (true for a real movie, not guaranteed for a folder/upload of
+    # independently-sized images -- see image_io.frame_shape). Rather than
+    # blocking the whole computation, just fall back to untracked per-frame
+    # geometry/intensity below when frame sizes aren't uniform.
+    can_track = len({m.shape for m in masks}) <= 1
 
     tracking_nodes: list[dict] = []
     frame_track_map: dict[int, dict[int, int]] = {}
     interpolated: set[tuple[int, int]] = set()
     working_masks = masks
-    if series.frame_count > 1 and mask_stack.shape[0] > 0 and mask_stack.any():
+    if series.frame_count > 1 and can_track and masks and any(m.any() for m in masks):
+        mask_stack = np.stack(masks, axis=0)
         tracked_image, tracking_nodes, interpolated = compute_tracking(
             mask_stack, threshold=iou_threshold, max_miss=max_miss, fill_gaps=fill_gaps
         )
