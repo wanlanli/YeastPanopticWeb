@@ -36,9 +36,14 @@ export function PolygonList() {
   const [editValue, setEditValue] = useState('');
 
   const sorted = [...polygons].sort((a, b) => sortKey(a) - sortKey(b));
-  const classes = Array.from(
-    new Set(polygons.map((p) => classFromLabel(p.label)).filter((c): c is number => c !== null)),
-  ).sort((a, b) => a - b);
+  const classCounts = new Map<number, number>();
+  let unclassifiedCount = 0;
+  for (const p of polygons) {
+    const c = classFromLabel(p.label);
+    if (c === null) unclassifiedCount++;
+    else classCounts.set(c, (classCounts.get(c) ?? 0) + 1);
+  }
+  const classes = Array.from(classCounts.keys()).sort((a, b) => a - b);
 
   function handleSelect(p: PolygonAnnotation) {
     selectPolygon(p.id);
@@ -89,14 +94,22 @@ export function PolygonList() {
       <div className="polygon-list-header">
         Polygons <span className="polygon-list-count">{polygons.length}</span>
       </div>
-      {classes.length > 0 && (
+      {(classes.length > 0 || unclassifiedCount > 0) && (
         <div className="polygon-class-legend">
           {classes.map((c) => (
             <span key={c} className="polygon-class-legend-item">
               <span className="polygon-swatch" style={{ background: colorForClass(c) }} />
               {classDisplayName(c)}
+              <span className="polygon-list-count">{classCounts.get(c)}</span>
             </span>
           ))}
+          {unclassifiedCount > 0 && (
+            <span className="polygon-class-legend-item">
+              <span className="polygon-swatch" style={{ background: SOURCE_COLOR.manual }} />
+              untyped
+              <span className="polygon-list-count">{unclassifiedCount}</span>
+            </span>
+          )}
         </div>
       )}
       <ul className="polygon-list-items">
