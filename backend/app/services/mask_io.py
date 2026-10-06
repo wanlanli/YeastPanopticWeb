@@ -17,6 +17,26 @@ def _polygon_label(label: str, fallback_index: int) -> int:
         return fallback_index
 
 
+def unique_raster_ids(labels: list[str]) -> list[int]:
+    """One distinct mask value per polygon, for analysis that must see every
+    polygon as its own object. A polygon keeps its own label as long as no
+    earlier polygon on the frame already took it; a duplicate (e.g. two
+    model polygons both saved as "1011") gets the lowest free instance in
+    the same class, so the `1000*class + instance` encoding -- and with it
+    the class -- is preserved. Without this, rasterizing duplicates merges
+    them into one disconnected object, which CellMate can't measure."""
+    taken: set[int] = set()
+    ids = []
+    for i, label in enumerate(labels, start=1):
+        value = _polygon_label(label, i)
+        if value in taken:
+            base = (value // 1000) * 1000
+            value = next(base + k for k in range(1, 1000) if base + k not in taken)
+        taken.add(value)
+        ids.append(value)
+    return ids
+
+
 def rasterize_polygons(
     polygons: list[tuple[str, list[list[float]]]], height: int, width: int
 ) -> np.ndarray:

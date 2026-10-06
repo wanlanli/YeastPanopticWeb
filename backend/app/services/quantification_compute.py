@@ -595,16 +595,27 @@ def _series_non_dic_channels(series: ImageSeries) -> list[tuple[int, str]]:
     return [(i, names[i]) for i in range(series.channel_count) if i != dic]
 
 
-def frame_mask(db: Session, series: ImageSeries, frame_index: int) -> np.ndarray:
+def frame_mask_with_labels(
+    db: Session, series: ImageSeries, frame_index: int
+) -> tuple[np.ndarray, dict[int, str]]:
+    """This frame's polygons rasterized with one distinct value per polygon
+    (see mask_io.unique_raster_ids -- duplicate labels would otherwise merge
+    into a single object), plus {mask value: stored polygon label} for
+    mapping results back to what the user sees on the polygons."""
     rows = (
         db.query(Polygon)
         .filter(Polygon.series_id == series.id, Polygon.frame_index == frame_index)
         .order_by(Polygon.id)
         .all()
     )
-    polys = [(p.label, p.points) for p in rows]
+    ids = mask_io.unique_raster_ids([p.label for p in rows])
+    polys = [(str(raster_id), p.points) for raster_id, p in zip(ids, rows)]
     h, w = image_io.frame_shape(series.source_type, series.path, frame_index)
-    return mask_io.rasterize_polygons(polys, h, w)
+    return mask_io.rasterize_polygons(polys, h, w), {raster_id: p.label for raster_id, p in zip(ids, rows)}
+
+
+def frame_mask(db: Session, series: ImageSeries, frame_index: int) -> np.ndarray:
+    return frame_mask_with_labels(db, series, frame_index)[0]
 
 
 def _stack_masks(series: ImageSeries, masks: list[np.ndarray]) -> np.ndarray:
@@ -652,7 +663,8 @@ def compute_series_quantification(
     continuous."""
     non_dic_channels = _series_non_dic_channels(series)
 
-    masks = [frame_mask(db, series, f) for f in range(series.frame_count)]
+    masks_and_labels = [frame_mask_with_labels(db, series, f) for f in range(series.frame_count)]
+    masks = [m for m, _ in masks_and_labels]
 
     # Cross-frame tracking assumes every frame shares one coordinate space
     # (true for a real movie, not guaranteed for a folder/upload of
@@ -671,7 +683,9 @@ def compute_series_quantification(
             mask_stack, threshold=iou_threshold, max_miss=max_miss, fill_gaps=fill_gaps
         )
         working_masks = [tracked_image[t] for t in range(tracked_image.shape[0])]
-        frame_track_map = _build_frame_track_map(masks, working_masks)
+        frame_track_map = _to_stored_labels(
+            _build_frame_track_map(masks, working_masks), [labels for _, labels in masks_and_labels]
+        )
 
     feature_frames = []
     for frame_index, mask in enumerate(working_masks):
@@ -738,3 +752,25 @@ def _build_frame_track_map(
         if per_frame:
             frame_map[t] = per_frame
     return frame_map
+
+
+def _to_stored_labels(
+    frame_map: dict[int, dict[int, int]], raster_labels: list[dict[int, str]]
+) -> dict[int, dict[int, int]]:
+    """Re-key _build_frame_track_map's {mask value: track id} by the stored
+    polygon label instead, which is what the Viewer looks tracks up by.
+    When several polygons share a label (see mask_io.unique_raster_ids),
+    only one of their tracks can be kept under it."""
+    out: dict[int, dict[int, int]] = {}
+    for t, per_frame in frame_map.items():
+        labels = raster_labels[t]
+        keyed: dict[int, int] = {}
+        for raster_id, track_id in per_frame.items():
+            try:
+                label = int(labels.get(raster_id, raster_id))
+            except ValueError:
+                continue
+            keyed.setdefault(label, track_id)
+        if keyed:
+            out[t] = keyed
+    return out

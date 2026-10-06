@@ -336,11 +336,15 @@ def measure_frame(
     if frame_index < 0 or frame_index >= series.frame_count:
         raise HTTPException(404, f"frame_index {frame_index} out of range")
 
-    mask = quantification_compute.frame_mask(db, series, frame_index)
+    mask, raster_labels = quantification_compute.frame_mask_with_labels(db, series, frame_index)
     try:
         table = quantification_compute.compute_geometry(mask, pixel_size=pixel_size)
     except RuntimeError as exc:
         raise HTTPException(400, str(exc)) from exc
+    # report each object under its stored polygon label (what the user sees),
+    # not the de-duplicated mask value it was measured under
+    if "label" in table.columns:
+        table["label"] = table["label"].map(lambda v: raster_labels.get(int(v), str(int(v))))
 
     rows = table.replace({np.nan: None}).to_dict(orient="records")
     return FrameMeasureResult(columns=list(table.columns), rows=rows)
