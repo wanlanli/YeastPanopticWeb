@@ -52,6 +52,7 @@ export function ImageCanvas() {
   const setPromptPoints = useViewerStore((s) => s.setPromptPoints);
   const promptPreview = useViewerStore((s) => s.promptPreview);
   const setPromptPreview = useViewerStore((s) => s.setPromptPreview);
+  const framePredictionPreview = useViewerStore((s) => s.framePredictionPreview);
   const clearDrafts = useViewerStore((s) => s.clearDrafts);
   const showTrackIds = useViewerStore((s) => s.showTrackIds);
   const showMasks = useViewerStore((s) => s.showMasks);
@@ -641,6 +642,23 @@ export function ImageCanvas() {
                     y={p.y}
                     radius={4 / transform.scale}
                     fill={p.label === 1 ? '#22c55e' : '#ef4444'}
+                    listening={false}
+                  />
+                ))}
+              </>
+            )}
+
+            {framePredictionPreview && framePredictionPreview.seriesId === series?.id && (
+              <>
+                {framePredictionPreview.predictions.map((pred, i) => (
+                  <Line
+                    key={i}
+                    points={pred.points.flat()}
+                    closed
+                    stroke={colorForClass(pred.class_id)}
+                    strokeWidth={2 / transform.scale}
+                    dash={[6 / transform.scale, 4 / transform.scale]}
+                    fillEnabled={false}
                     listening={false}
                   />
                 ))}

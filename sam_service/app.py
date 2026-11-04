@@ -16,34 +16,69 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
+import threading
+import time
 
 import numpy as np
 import skimage.io
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from model_handler import ModelHandler
+from model_handler import ModelHandler, release_gpu_memory
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="SAM point-prompt service")
 _model: ModelHandler | None = None
+_model_lock = threading.Lock()
+_last_used = time.monotonic()
+
+# After this many idle seconds with no request, drop the model and free its
+# GPU memory; the next request pays a one-time reload cost. 0/unset disables
+# this and keeps the model resident forever (the old behavior).
+IDLE_TIMEOUT_SECONDS = float(os.environ.get("SAM_IDLE_TIMEOUT_SECONDS", "600"))
 
 
 class PredictResult(BaseModel):
     polygons: list[list[list[float]]]
 
 
+def _get_model() -> ModelHandler:
+    """Returns the loaded model, reloading it first if a previous idle
+    period caused it to be dropped."""
+    global _model, _last_used
+    with _model_lock:
+        if _model is None:
+            logger.info("Loading SAM model (startup or reload after idle unload)")
+            _model = ModelHandler()
+        _last_used = time.monotonic()
+        return _model
+
+
+def _idle_unload_loop() -> None:
+    if IDLE_TIMEOUT_SECONDS <= 0:
+        return
+    while True:
+        time.sleep(min(60, IDLE_TIMEOUT_SECONDS))
+        global _model
+        with _model_lock:
+            if _model is not None and time.monotonic() - _last_used > IDLE_TIMEOUT_SECONDS:
+                logger.info("SAM model idle for >%.0fs -- unloading to free GPU memory", IDLE_TIMEOUT_SECONDS)
+                _model = None
+                release_gpu_memory()
+
+
 @app.on_event("startup")
 def load_model() -> None:
-    global _model
-    _model = ModelHandler()
+    _get_model()
+    threading.Thread(target=_idle_unload_loop, daemon=True).start()
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok" if _model is not None else "loading"}
+    return {"status": "ok" if _model is not None else "idle (will reload on next request)"}
 
 
 def _to_uint8_rgb(image: np.ndarray) -> np.ndarray:
@@ -72,8 +107,10 @@ async def predict_point(
 ):
     """`points` is a JSON string: [{"x": float, "y": float, "label": 0|1}, ...]
     (label 1 = include/foreground, 0 = exclude/background)."""
-    if _model is None:
-        raise HTTPException(503, "Model still loading")
+    try:
+        model = _get_model()
+    except Exception as exc:
+        raise HTTPException(503, f"Model failed to load: {exc}") from exc
 
     try:
         arr = skimage.io.imread(io.BytesIO(await image.read()))
@@ -87,5 +124,5 @@ async def predict_point(
         raise HTTPException(400, f"Invalid points payload: {exc}") from exc
 
     rgb = _to_uint8_rgb(arr)
-    polygon = _model.predict_point(rgb, point_list)
+    polygon = model.predict_point(rgb, point_list)
     return PredictResult(polygons=[polygon] if polygon is not None else [])

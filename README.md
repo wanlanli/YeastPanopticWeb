@@ -12,9 +12,11 @@ deps stay out of the main API:
 
 - **Point-prompt (SAM)** — click a cell, get one mask back.
 - **Whole-frame auto-segmentation** — one click, every instance in the
-  frame back (cell/shmoo/zygote/tetrad/lysis/spore), labeled by class.
-  Uses the [PytrochDeepyeast](https://github.com/wanlanli/PytrochDeepyeast)
-  model.
+  frame back (cell/shmoo/zygote/tetrad/lysis/spore), labeled by class, with
+  score/area/border/smoothing filters you can adjust and re-apply without
+  rerunning the model. Uses the
+  [deepyeast-panoptic](https://github.com/wanlanli/deepyeast-panoptic)
+  package.
 
 Only `backend` + `frontend` are required. Either segmentation service
 missing or not configured falls back to a classical-CV placeholder, so the

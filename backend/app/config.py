@@ -14,7 +14,12 @@ DB_PATH = STORAGE_DIR / "app.db"
 for d in (STORAGE_DIR, SERIES_DIR, PREVIEW_DIR, UPLOAD_DIR, QUANT_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
-DATABASE_URL = f"sqlite:///{DB_PATH}"
+# Defaults to the local SQLite file, but can point at a real server
+# (e.g. postgresql+psycopg://user:pass@host/db) -- see app.db for how the
+# engine is tuned differently for each case.
+DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DB_PATH}")
+DB_POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "5"))
+DB_MAX_OVERFLOW = int(os.environ.get("DB_MAX_OVERFLOW", "10"))
 
 SUPPORTED_IMAGE_EXTENSIONS = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 

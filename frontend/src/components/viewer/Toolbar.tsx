@@ -1,4 +1,5 @@
 import {
+  Check,
   Crosshair,
   Download,
   Eraser,
@@ -16,11 +17,12 @@ import {
   Trash,
   Trash2,
   Undo2,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client';
-import type { PolygonAnnotation } from '../../api/types';
+import type { PolygonAnnotation, SegmentSettings } from '../../api/types';
 import { DEFAULT_SEGMENT_SETTINGS, useViewerStore, type Tool } from '../../store/useViewerStore';
 import { BufferBar } from './BufferBar';
 import { CLASS_IDS, classDisplayName, colorForClass, textColorForClass } from './colorByClass';
@@ -110,6 +112,8 @@ export function Toolbar() {
   const setPromptClassId = useViewerStore((s) => s.setPromptClassId);
   const segmentSettings = useViewerStore((s) => s.segmentSettings);
   const setSegmentSettings = useViewerStore((s) => s.setSegmentSettings);
+  const framePredictionPreview = useViewerStore((s) => s.framePredictionPreview);
+  const setFramePredictionPreview = useViewerStore((s) => s.setFramePredictionPreview);
   const showMasks = useViewerStore((s) => s.showMasks);
   const toggleShowMasks = useViewerStore((s) => s.toggleShowMasks);
   const seriesTracking = useViewerStore((s) => s.seriesTracking);
@@ -138,35 +142,57 @@ export function Toolbar() {
     segmentErrorTimeoutRef.current = setTimeout(() => setSegmentError(null), 5000);
   }
 
-  /** Run the panoptic model on one frame and create a polygon per detected
-   * instance. Instance numbers (the `1000 * class + instance` label scheme)
-   * are assigned by the backend, scanned across the whole series -- not
-   * computed here from `existing` -- so they never collide with an object
-   * on a different frame (or one a concurrent create just added). */
-  async function segmentFrame(
+  const appliedPreviewSettingsRef = useRef<SegmentSettings | null>(null);
+  const refineTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refineAbortRef = useRef<AbortController | null>(null);
+
+  /** Run the panoptic model on one frame and immediately accept every
+   * detected instance as a polygon -- used by "Segment All Frames", where
+   * nobody is watching each frame to review a preview. Instance numbers
+   * (the `1000 * class + instance` label scheme) are assigned by the
+   * backend, scanned across the whole series, so they never collide with
+   * an object on a different frame (or one a concurrent create just
+   * added). */
+  async function segmentFrameAndAccept(
     seriesId: number,
     frameIdx: number,
     signal?: AbortSignal,
   ): Promise<PolygonAnnotation[]> {
-    const { predictions } = await api.predictFrame(seriesId, frameIdx, segmentSettings, signal);
-    const created: PolygonAnnotation[] = [];
-    for (const pred of predictions) {
-      created.push(
-        await api.createPolygon(seriesId, frameIdx, pred.points, 'model', { classId: pred.class_id }),
-      );
-    }
-    return created;
+    const { result_id, predictions } = await api.predictFrame(seriesId, frameIdx, segmentSettings, signal);
+    if (predictions.length === 0) return [];
+    return api.acceptPredictions(seriesId, frameIdx, result_id, predictions, segmentSettings);
   }
 
+  /** Run the panoptic model on the current frame. By default this saves
+   * the result immediately (same one-click behavior as before previews
+   * existed) -- no review step for the common case of just using the
+   * default settings. Only when Advanced Settings is open (the user has
+   * already indicated they want to tune score/area/etc first) does this
+   * show a preview instead (see framePredictionPreview): nothing is
+   * written to the database yet, further settings changes cheaply
+   * re-threshold it (see the effect below) instead of re-running the
+   * model, and Accept/Discard (handleAcceptPrediction/
+   * handleDiscardPrediction) make the final call. */
   async function handleAutoSegment() {
     if (!series) return;
     const controller = new AbortController();
     autoSegmentAbortRef.current = controller;
     setAutoSegmenting(true);
     try {
-      const created = await segmentFrame(series.id, frameIndex, controller.signal);
-      for (const p of created) upsertPolygon(p);
-      if (created.length > 0) pushAction({ type: 'createMany', polygons: created });
+      if (showAdvanced) {
+        const result = await api.predictFrame(series.id, frameIndex, segmentSettings, controller.signal);
+        appliedPreviewSettingsRef.current = segmentSettings;
+        setFramePredictionPreview({
+          seriesId: series.id,
+          frameIndex,
+          resultId: result.result_id,
+          predictions: result.predictions,
+        });
+      } else {
+        const created = await segmentFrameAndAccept(series.id, frameIndex, controller.signal);
+        for (const p of created) upsertPolygon(p);
+        if (created.length > 0) pushAction({ type: 'createMany', polygons: created });
+      }
     } catch (err) {
       // AbortError means the user hit Stop -- not a failure, nothing to show.
       // Anything else (e.g. the model service being briefly unreachable)
@@ -184,6 +210,79 @@ export function Toolbar() {
 
   function handleStopAutoSegment() {
     autoSegmentAbortRef.current?.abort();
+  }
+
+  // Cheaply re-threshold the pending preview whenever Advanced Settings
+  // change, instead of making the user re-click Auto-Segment Frame (which
+  // would rerun the model from the original image every time). Debounced
+  // so dragging a slider doesn't fire a request per intermediate value.
+  useEffect(() => {
+    if (!series || !framePredictionPreview) return;
+    if (framePredictionPreview.seriesId !== series.id || framePredictionPreview.frameIndex !== frameIndex) return;
+    if (appliedPreviewSettingsRef.current === segmentSettings) return; // the settings this preview already reflects
+
+    refineAbortRef.current?.abort();
+    if (refineTimeoutRef.current) clearTimeout(refineTimeoutRef.current);
+
+    const controller = new AbortController();
+    refineAbortRef.current = controller;
+    const { seriesId, frameIndex: previewFrameIndex, resultId } = framePredictionPreview;
+
+    refineTimeoutRef.current = setTimeout(async () => {
+      try {
+        // No result_id means the active model has no cache to refine from
+        // (e.g. the classical-CV placeholder) -- predict-frame again
+        // instead, which is cheap for that model anyway.
+        const result = resultId
+          ? await api.refineFrame(seriesId, previewFrameIndex, resultId, segmentSettings, controller.signal)
+          : await api.predictFrame(seriesId, previewFrameIndex, segmentSettings, controller.signal);
+        appliedPreviewSettingsRef.current = segmentSettings;
+        setFramePredictionPreview({
+          seriesId,
+          frameIndex: previewFrameIndex,
+          resultId: result.result_id,
+          predictions: result.predictions,
+        });
+      } catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          showSegmentError(err instanceof Error ? err.message : 'Refine failed');
+        }
+      }
+    }, 250);
+
+    return () => {
+      if (refineTimeoutRef.current) clearTimeout(refineTimeoutRef.current);
+    };
+    // Only re-run when the settings themselves change -- series/frameIndex/
+    // framePredictionPreview are read fresh from the closure each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentSettings]);
+
+  async function handleAcceptPrediction() {
+    if (!series || !framePredictionPreview || framePredictionPreview.predictions.length === 0) {
+      setFramePredictionPreview(null);
+      return;
+    }
+    try {
+      const created = await api.acceptPredictions(
+        series.id,
+        frameIndex,
+        framePredictionPreview.resultId,
+        framePredictionPreview.predictions,
+        segmentSettings,
+      );
+      for (const p of created) upsertPolygon(p);
+      if (created.length > 0) pushAction({ type: 'createMany', polygons: created });
+    } catch (err) {
+      showSegmentError(err instanceof Error ? err.message : 'Failed to accept predictions');
+      return;
+    }
+    setFramePredictionPreview(null);
+  }
+
+  function handleDiscardPrediction() {
+    refineAbortRef.current?.abort();
+    setFramePredictionPreview(null);
   }
 
   async function handleBatchSegment() {
@@ -204,7 +303,7 @@ export function Toolbar() {
     for (let f = 0; f < series.frame_count; f++) {
       if (batchStopRef.current) break;
       try {
-        const created = await segmentFrame(series.id, f);
+        const created = await segmentFrameAndAccept(series.id, f);
         if (f === frameIndex) {
           for (const p of created) upsertPolygon(p);
         }
@@ -308,10 +407,33 @@ export function Toolbar() {
         <IconButton
           icon={Sparkles}
           label="Auto-Segment Frame"
-          title="Auto-Segment Frame — detect every cell/instance in this frame with the panoptic model"
+          title={
+            showAdvanced
+              ? 'Auto-Segment Frame — detect every cell/instance in this frame and preview the result, so you can tune Advanced Settings before Accepting'
+              : 'Auto-Segment Frame — detect every cell/instance in this frame with the panoptic model and save immediately (open Advanced Settings first to preview/tune before saving)'
+          }
           onClick={handleAutoSegment}
           disabled={autoSegmenting || batchRunning}
         />
+      )}
+      {series && framePredictionPreview && framePredictionPreview.seriesId === series.id && (
+        <>
+          <span className="toolbar-hint-text">
+            {framePredictionPreview.predictions.length} detected (preview)
+          </span>
+          <IconButton
+            icon={Check}
+            label="Accept"
+            title="Accept — save the previewed detections as polygons"
+            onClick={handleAcceptPrediction}
+          />
+          <IconButton
+            icon={X}
+            label="Discard"
+            title="Discard — throw away the previewed detections without saving"
+            onClick={handleDiscardPrediction}
+          />
+        </>
       )}
       {series && series.frame_count > 1 && (
         <IconButton
@@ -369,6 +491,17 @@ export function Toolbar() {
                   value={segmentSettings.areaThreshold}
                   onChange={(e) => setSegmentSettings({ areaThreshold: Number(e.target.value) })}
                   title="Drop detections smaller than this many pixels"
+                />
+              </label>
+              <label>
+                Smoothing (max hole, px)
+                <input
+                  type="number"
+                  step="50"
+                  min={0}
+                  value={segmentSettings.holeAreaThreshold}
+                  onChange={(e) => setSegmentSettings({ holeAreaThreshold: Number(e.target.value) })}
+                  title="Fill internal holes in a mask up to this many pixels -- higher is smoother"
                 />
               </label>
               <label className="advanced-settings-checkbox">

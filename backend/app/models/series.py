@@ -37,6 +37,13 @@ class ImageSeries(Base):
     polygons: Mapped[list["Polygon"]] = relationship(
         back_populates="series", cascade="all, delete-orphan"
     )
+    # Deleting a series must take its prediction-provenance rows with it --
+    # Polygon.prediction_id is now an enforced FK (see app.db's
+    # foreign_keys=ON pragma), so an orphaned FramePredictionRun would
+    # otherwise fail that constraint.
+    predictions: Mapped[list["FramePredictionRun"]] = relationship(
+        back_populates="series", cascade="all, delete-orphan"
+    )
 
     @property
     def original_filename(self) -> str | None:

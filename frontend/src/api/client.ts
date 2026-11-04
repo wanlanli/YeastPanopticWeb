@@ -1,5 +1,7 @@
 import type {
   FeatureTablePage,
+  FramePrediction,
+  FramePredictResult,
   FrameMeasureResult,
   MeasurementRegion,
   PolygonAnnotation,
@@ -28,6 +30,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     return res.json() as Promise<T>;
   }
   return undefined as T;
+}
+
+function segmentSettingsToParams(settings?: SegmentSettings): URLSearchParams {
+  const params = new URLSearchParams();
+  if (settings) {
+    params.set('score_threshold', String(settings.scoreThreshold));
+    params.set('instance_threshold', String(settings.instanceThreshold));
+    params.set('area_threshold', String(settings.areaThreshold));
+    params.set('hole_area_threshold', String(settings.holeAreaThreshold));
+    params.set('keep_border', String(settings.keepBorderCells));
+  }
+  return params;
 }
 
 export const api = {
@@ -146,22 +160,54 @@ export const api = {
       `/api/series/${seriesId}/frame/${frameIndex}/predict-point`,
       { method: 'POST', body: JSON.stringify({ points }) },
     ),
+  /** Runs the model once and returns a *preview* -- never writes to the
+   * database. See refineFrame (cheap re-threshold of this result) and
+   * acceptPredictions (commits a preview, from either call, as polygons). */
   predictFrame: (seriesId: number, frameIndex: number, settings?: SegmentSettings, signal?: AbortSignal) => {
-    const params = new URLSearchParams();
-    if (settings) {
-      params.set('score_threshold', String(settings.scoreThreshold));
-      params.set('instance_threshold', String(settings.instanceThreshold));
-      params.set('area_threshold', String(settings.areaThreshold));
-      params.set('keep_border', String(settings.keepBorderCells));
-    }
+    const params = segmentSettingsToParams(settings);
     const qs = params.toString();
-    return request<{
-      predictions: { class_id: number; class_name: string; points: [number, number][]; confidence: number }[];
-    }>(`/api/series/${seriesId}/frame/${frameIndex}/predict-frame${qs ? `?${qs}` : ''}`, {
-      method: 'POST',
-      signal,
-    });
+    return request<FramePredictResult>(
+      `/api/series/${seriesId}/frame/${frameIndex}/predict-frame${qs ? `?${qs}` : ''}`,
+      { method: 'POST', signal },
+    );
   },
+  /** Cheaply recomputes predictFrame's result for new settings -- no model
+   * rerun as long as the active model supports it (falls back server-side
+   * otherwise). Also never writes to the database. */
+  refineFrame: (
+    seriesId: number,
+    frameIndex: number,
+    resultId: string,
+    settings: SegmentSettings,
+    signal?: AbortSignal,
+  ) => {
+    const qs = segmentSettingsToParams(settings).toString();
+    return request<FramePredictResult>(
+      `/api/series/${seriesId}/frame/${frameIndex}/refine-frame/${resultId}${qs ? `?${qs}` : ''}`,
+      { signal },
+    );
+  },
+  /** Commits a predictFrame/refineFrame preview: one Polygon per prediction,
+   * plus a provenance record of which settings produced them. */
+  acceptPredictions: (
+    seriesId: number,
+    frameIndex: number,
+    resultId: string | null,
+    predictions: FramePrediction[],
+    settings: SegmentSettings,
+  ) =>
+    request<PolygonAnnotation[]>(`/api/series/${seriesId}/frame/${frameIndex}/predict-frame/accept`, {
+      method: 'POST',
+      body: JSON.stringify({
+        result_id: resultId,
+        predictions,
+        score_threshold: settings.scoreThreshold,
+        instance_threshold: settings.instanceThreshold,
+        area_threshold: settings.areaThreshold,
+        hole_area_threshold: settings.holeAreaThreshold,
+        keep_border: settings.keepBorderCells,
+      }),
+    }),
 
   // Quantification
   listDatasets: (projectId: number) =>

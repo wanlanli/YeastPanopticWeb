@@ -53,4 +53,25 @@ class FramePrediction(BaseModel):
 
 
 class FramePredictResult(BaseModel):
+    # The auto-segmentation service's cache key for this prediction, if it
+    # supports cheap re-thresholding -- pass it to .../refine-frame/{id} to
+    # recompute `predictions` under new thresholds without rerunning the
+    # model. None for a model that doesn't support this (e.g. the classical-
+    # CV placeholder, where rerunning is cheap anyway).
+    result_id: str | None = None
     predictions: list[FramePrediction]
+
+
+class AcceptPredictionsRequest(BaseModel):
+    """Commits a previewed (predict-frame/refine-frame) result: one
+    `Polygon` row per prediction, plus a `FramePredictionRun` row recording
+    the thresholds that produced them -- see
+    app.api.annotations.accept_predictions."""
+
+    result_id: str | None = None
+    predictions: list[FramePrediction]
+    score_threshold: float
+    instance_threshold: float
+    area_threshold: int
+    hole_area_threshold: int = 1000
+    keep_border: bool = False

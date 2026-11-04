@@ -17,6 +17,13 @@ class Polygon(Base):
     label: Mapped[str] = mapped_column(String(128), default="")
     # "manual" | "model"
     source: Mapped[str] = mapped_column(String(16), default="manual")
+    # Which accepted auto-segmentation run (model + thresholds) created this
+    # polygon, if any -- null for "manual" polygons and for anything created
+    # before this provenance tracking existed. See
+    # app.models.prediction.FramePredictionRun.
+    prediction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("frame_predictions.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )
@@ -27,3 +34,4 @@ class Polygon(Base):
     )
 
     series: Mapped["ImageSeries"] = relationship(back_populates="polygons")
+    prediction: Mapped["FramePredictionRun | None"] = relationship(back_populates="polygons")

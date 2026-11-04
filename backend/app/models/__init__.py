@@ -2,6 +2,7 @@ from app.models.user import User
 from app.models.session import VisitorSession
 from app.models.project import Project
 from app.models.series import ImageSeries
+from app.models.prediction import FramePredictionRun
 from app.models.polygon import Polygon
 from app.models.quantification import QuantificationDataset
 
@@ -10,6 +11,7 @@ __all__ = [
     "VisitorSession",
     "Project",
     "ImageSeries",
+    "FramePredictionRun",
     "Polygon",
     "QuantificationDataset",
 ]

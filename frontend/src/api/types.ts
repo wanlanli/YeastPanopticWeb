@@ -20,7 +20,28 @@ export interface SegmentSettings {
   scoreThreshold: number;
   instanceThreshold: number;
   areaThreshold: number;
+  /** smoothing: max internal-hole area (px) the model fills in per mask */
+  holeAreaThreshold: number;
   keepBorderCells: boolean;
+}
+
+/** One instance detected by auto-segment, before it's accepted into the
+ * database as a Polygon -- see predictFrame/refineFrame/acceptPredictions. */
+export interface FramePrediction {
+  class_id: number;
+  class_name: string;
+  points: [number, number][];
+  confidence: number;
+}
+
+/** predictFrame/refineFrame's response: a *preview*, not yet persisted --
+ * see acceptPredictions. `result_id` is null when the active model has no
+ * server-side cache to refine from (predictFrame must be called again on
+ * every settings change in that case; the frontend doesn't need to know
+ * why -- refineFrame transparently falls back to it on the backend). */
+export interface FramePredictResult {
+  result_id: string | null;
+  predictions: FramePrediction[];
 }
 
 export interface Series {

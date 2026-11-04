@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Clones the two companion repos this project needs -- the yeast panoptic
-# model code and the CellMate quantification library -- into external/,
+# model package and the CellMate quantification library -- into external/,
 # if they aren't already there. Safe to re-run: skips any repo that's
 # already checked out here, so it never clobbers local edits or a Cython
 # build you've already done.
@@ -28,9 +28,9 @@ clone_if_missing() {
   fi
 }
 
-clone_if_missing PytrochDeepyeast https://github.com/wanlanli/PytrochDeepyeast.git
+clone_if_missing deepyeast-panoptic https://github.com/wanlanli/deepyeast-panoptic.git
 clone_if_missing CellMate https://github.com/wanlanli/CellMate.git
 
 echo
-echo "PANOPTIC_REPO_PATH=$EXTERNAL_DIR/PytrochDeepyeast"
+echo "DEEPYEAST_PANOPTIC_PATH=$EXTERNAL_DIR/deepyeast-panoptic"
 echo "CELLMATE_PATH=$EXTERNAL_DIR/CellMate"

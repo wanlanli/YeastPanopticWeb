@@ -32,6 +32,14 @@ SAM_MODEL_TYPE = os.environ.get("SAM_MODEL_TYPE", "vit_h")
 SAM_DEVICE = os.environ.get("SAM_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def release_gpu_memory() -> None:
+    """Call after dropping the last reference to a ModelHandler, so its CUDA
+    memory is handed back to the driver (visible in nvidia-smi) instead of
+    sitting in PyTorch's allocator cache."""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 class ModelHandler:
     def __init__(self):
         logger.info("Loading SAM checkpoint %s (%s) on %s", SAM_CHECKPOINT_PATH, SAM_MODEL_TYPE, SAM_DEVICE)

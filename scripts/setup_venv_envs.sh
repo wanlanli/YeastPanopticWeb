@@ -42,7 +42,7 @@ create_venv_and_install() {
 
 create_venv_and_install backend
 create_venv_and_install sam_service
-create_venv_and_install panoptic_service 'git+https://github.com/cocodataset/panopticapi.git'
+create_venv_and_install panoptic_service
 
 MEASURE_DIR="$REPO_ROOT/external/CellMate/cellmate/image_measure/measure"
 echo "== Building CellMate's Cython extension for backend's Python =="
@@ -60,7 +60,7 @@ set_env_value() {
     echo "${key}=${value}" >> "$REPO_ROOT/.env"
   fi
 }
-set_env_value PANOPTIC_REPO_PATH "$REPO_ROOT/external/PytrochDeepyeast"
+set_env_value DEEPYEAST_PANOPTIC_PATH "$REPO_ROOT/external/deepyeast-panoptic"
 set_env_value CELLMATE_PATH "$REPO_ROOT/external/CellMate"
 
 if [ ! -d frontend/node_modules ]; then

@@ -29,10 +29,14 @@ class ThresholdBlobModel(AutoSegmentationModel):
         score_threshold: float | None = None,
         instance_threshold: float | None = None,
         area_threshold: int | None = None,
+        hole_area_threshold: int | None = None,
         keep_border: bool = False,
-    ) -> list[dict]:
-        # score_threshold/instance_threshold don't apply here -- every blob
-        # gets confidence=1.0, there's no per-instance model score to filter on.
+    ) -> dict:
+        # score_threshold/instance_threshold/hole_area_threshold don't apply
+        # here -- every blob gets confidence=1.0 (no per-instance model
+        # score to filter on) and no smoothing step. No result_id either:
+        # this placeholder has no cache to refine from -- re-running it is
+        # cheap anyway, so callers just call predict_frame again.
         min_area = area_threshold if area_threshold is not None else MIN_AREA
 
         gray = self._to_gray(image)
@@ -64,7 +68,7 @@ class ThresholdBlobModel(AutoSegmentationModel):
                     "confidence": 1.0,
                 }
             )
-        return results
+        return {"result_id": None, "predictions": results}
 
     @staticmethod
     def _to_gray(image: np.ndarray) -> np.ndarray:

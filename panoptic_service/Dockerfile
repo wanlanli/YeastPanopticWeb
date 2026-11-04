@@ -1,8 +1,9 @@
 # Plain standalone container for the yeast panoptic service (no Nuclio).
 #
-# The model repo (detectron2 code) is cloned in below, so it's baked into
-# the image and PANOPTIC_REPO_PATH already points at it by default. Only
-# the fine-tuned checkpoint/config -- machine-specific, not in that repo --
+# The model package (deepyeast_panoptic, including its vendored detectron2
+# fork) is cloned in below, so it's baked into the image and
+# DEEPYEAST_PANOPTIC_PATH already points at it by default. Only the
+# fine-tuned checkpoint/config -- machine-specific, not in that repo --
 # still needs to be mounted at runtime (normally handled by
 # docker-compose.yml at the repo root instead of this by hand):
 #
@@ -20,11 +21,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir 'git+https://github.com/cocodataset/panopticapi.git'
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN git clone --depth 1 https://github.com/wanlanli/PytrochDeepyeast.git /model_repo
-ENV PANOPTIC_REPO_PATH=/model_repo
+RUN git clone --depth 1 https://github.com/wanlanli/deepyeast-panoptic.git /deepyeast-panoptic
+ENV DEEPYEAST_PANOPTIC_PATH=/deepyeast-panoptic
 
 COPY . .
 

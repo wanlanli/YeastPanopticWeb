@@ -77,8 +77,6 @@ install_reqs yeastpanoptic-sam_service sam_service
 
 create_env yeastpanoptic-panoptic_service
 install_reqs yeastpanoptic-panoptic_service panoptic_service
-echo "== Installing panopticapi into yeastpanoptic-panoptic_service =="
-conda run -n yeastpanoptic-panoptic_service pip install 'git+https://github.com/cocodataset/panopticapi.git'
 
 MEASURE_DIR="$REPO_ROOT/external/CellMate/cellmate/image_measure/measure"
 echo "== Building CellMate's Cython extension for yeastpanoptic-backend's Python =="
@@ -96,7 +94,7 @@ set_env_value() {
     echo "${key}=${value}" >> "$REPO_ROOT/.env"
   fi
 }
-set_env_value PANOPTIC_REPO_PATH "$REPO_ROOT/external/PytrochDeepyeast"
+set_env_value DEEPYEAST_PANOPTIC_PATH "$REPO_ROOT/external/deepyeast-panoptic"
 set_env_value CELLMATE_PATH "$REPO_ROOT/external/CellMate"
 set_env_value PYTHON_ENV_MANAGER conda
 

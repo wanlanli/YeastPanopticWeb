@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { PolygonAnnotation, SegmentSettings, Series, SeriesTrackingMap } from '../api/types';
+import type { FramePrediction, PolygonAnnotation, SegmentSettings, Series, SeriesTrackingMap } from '../api/types';
 
 export type RightPanelTab = 'labels' | 'tracking' | 'quantification';
 
@@ -8,8 +8,21 @@ export const DEFAULT_SEGMENT_SETTINGS: SegmentSettings = {
   scoreThreshold: 0.1,
   instanceThreshold: 0.6,
   areaThreshold: 300,
+  holeAreaThreshold: 1000,
   keepBorderCells: false,
 };
+
+/** A pending (not yet persisted) Auto-Segment Frame result -- see Toolbar's
+ * handleAutoSegment/handleAcceptPrediction/handleDiscardPrediction. Changing
+ * segmentSettings while this is set re-renders this preview via a cheap
+ * refine call instead of re-running the model; nothing here is a Polygon
+ * until the user explicitly accepts it. */
+export interface FramePredictionPreview {
+  seriesId: number;
+  frameIndex: number;
+  resultId: string | null;
+  predictions: FramePrediction[];
+}
 
 export type Tool = 'select' | 'draw' | 'point-prompt';
 
@@ -79,6 +92,9 @@ interface ViewerState {
   /** user-adjustable auto-segment filtering settings, session-scoped (not
    * reset when switching series/frames) -- see Toolbar's Advanced Settings */
   segmentSettings: SegmentSettings;
+  /** pending Auto-Segment Frame result, awaiting Accept/Discard -- see
+   * FramePredictionPreview. Null when there's nothing to preview. */
+  framePredictionPreview: FramePredictionPreview | null;
 
   setSeries: (series: Series | null) => void;
   setFrameIndex: (index: number) => void;
@@ -113,6 +129,7 @@ interface ViewerState {
   toggleShowTrackIds: () => void;
   toggleShowMasks: () => void;
   setSegmentSettings: (settings: Partial<SegmentSettings>) => void;
+  setFramePredictionPreview: (preview: FramePredictionPreview | null) => void;
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => ({
@@ -141,6 +158,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   showTrackIds: false,
   showMasks: true,
   segmentSettings: DEFAULT_SEGMENT_SETTINGS,
+  framePredictionPreview: null,
 
   setSeries: (series) =>
     set({
@@ -154,6 +172,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       seriesTracking: null,
       rightPanelTab: 'labels',
       frameNames: null,
+      framePredictionPreview: null,
     }),
   setFrameIndex: (frameIndex) =>
     set((state) => ({
@@ -163,6 +182,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       selectedPolygonId: null,
       history: [],
       future: [],
+      framePredictionPreview: null,
     })),
   setViewChannel: (viewChannel) => set({ viewChannel }),
   setContrast: (vmin, vmax) => set({ vmin, vmax }),
@@ -226,4 +246,5 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   toggleShowMasks: () => set((s) => ({ showMasks: !s.showMasks })),
   setSegmentSettings: (partial) =>
     set((state) => ({ segmentSettings: { ...state.segmentSettings, ...partial } })),
+  setFramePredictionPreview: (framePredictionPreview) => set({ framePredictionPreview }),
 }));
