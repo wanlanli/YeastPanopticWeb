@@ -64,6 +64,37 @@ def _ensure_cellmate_on_path() -> None:
     _cellmate_ready = True
 
 
+def _drop_disconnected_fragments(mask: np.ndarray) -> np.ndarray:
+    """A label's rasterized pixels can end up split into several disconnected
+    blobs -- e.g. a thin, sliver-shaped polygon (a touching-cell boundary
+    artifact from segmentation) whose tip narrows to sub-pixel width and
+    rasterizes as an isolated single-pixel speck, detached from the object's
+    main body. CellMate's ImageMeasure then can't build a sane skeleton for
+    that label (it crashes deep inside skeleton_minor_axis with an
+    IndexError on an empty skeleton grid -- "No tips found!"), and since one
+    ImageMeasure call processes every label in the mask together, that one
+    malformed object would otherwise take down geometry for every *other*
+    object in the frame too. Keep only each label's largest connected
+    component so a stray disconnected fragment is dropped instead."""
+    from skimage.measure import label as connected_components
+
+    cleaned = mask
+    for value in np.unique(mask):
+        if value == 0:
+            continue
+        region = mask == value
+        cc = connected_components(region, connectivity=2)
+        if cc.max() <= 1:
+            continue
+        if cleaned is mask:
+            cleaned = mask.copy()
+        sizes = np.bincount(cc.ravel())
+        sizes[0] = 0
+        largest = sizes.argmax()
+        cleaned[region & (cc != largest)] = 0
+    return cleaned
+
+
 def compute_geometry(
     mask: np.ndarray, pixel_size: float = 1.0, sampling_interval: int = 5
 ) -> pd.DataFrame:
@@ -89,6 +120,7 @@ def compute_geometry(
     out_columns = [*GEOMETRY_COLUMNS[:1], "type", *GEOMETRY_COLUMNS[2:]]
     if not np.any(mask):
         return pd.DataFrame(columns=out_columns)
+    mask = _drop_disconnected_fragments(mask)
 
     _ensure_cellmate_on_path()
     from cellmate.image_measure import ImageMeasure
@@ -233,6 +265,7 @@ def compute_region_intensity(
     columns = ["label", "point_index", "coord_row", "coord_col", "intensity"]
     if not np.any(mask):
         return pd.DataFrame(columns=columns)
+    mask = _drop_disconnected_fragments(mask)
 
     _ensure_cellmate_on_path()
     from cellmate.image_measure import ImageMeasure
